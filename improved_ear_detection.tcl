@@ -308,6 +308,36 @@ proc clusterPointsKMeans {points k {max_iters 10}} {
 proc getEarCentersOnly {points} {
     puts "DEBUG: Starting with [llength $points] points"
 
+    # Calculate bounding box to determine if this is a "big shape"
+    # Skip ear detection for large shapes (e.g., rectangular bodies)
+    if {[llength $points] > 0} {
+        set min_x [lindex [lindex $points 0] 0]
+        set max_x $min_x
+        set min_y [lindex [lindex $points 0] 1]
+        set max_y $min_y
+
+        foreach pt $points {
+            lassign $pt x y
+            if {$x < $min_x} {set min_x $x}
+            if {$x > $max_x} {set max_x $x}
+            if {$y < $min_y} {set min_y $y}
+            if {$y > $max_y} {set max_y $y}
+        }
+
+        set width [expr {$max_x - $min_x}]
+        set height [expr {$max_y - $min_y}]
+        set area [expr {$width * $height}]
+
+        # Skip ear detection if bounding box area is large (threshold: 50000)
+        # This filters out big rectangular shapes like body components
+        if {$area > 50000} {
+            puts "DEBUG: Skipping ear detection for large shape (area=$area)"
+            return {}
+        }
+
+        puts "DEBUG: Shape area=$area, proceeding with ear detection"
+    }
+
     # Find main circle using RANSAC
     set result [ransacCircleFitFastWithRadius $points 50]
 
