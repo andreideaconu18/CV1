@@ -98,7 +98,9 @@ class StoriaScraper(BaseScraper):
             )
             title = title_el.get_text(strip=True) if title_el else None
 
-            # Price
+            details_text = card.get_text(" ", strip=True).lower()
+
+            # Price — try targeted selector first, then regex on full card text
             price, currency = None, "EUR"
             price_el = card.select_one(
                 "[data-cy='listing-item-price'], [class*='price'], [class*='Price'], [class*='pret']"
@@ -115,8 +117,22 @@ class StoriaScraper(BaseScraper):
                     currency = "EUR"
                 elif "RON" in raw.upper() or "LEI" in raw.upper():
                     currency = "RON"
-
-            details_text = card.get_text(" ", strip=True).lower()
+            if price is None:
+                # Fallback: extract price from full card text
+                pm = re.search(r'(\d[\d\s]{1,7})\s*(?:€|eur\b)', details_text)
+                if pm:
+                    try:
+                        price = float("".join(pm.group(1).split()))
+                    except ValueError:
+                        pass
+                else:
+                    pm = re.search(r'(\d[\d\s]{1,7})\s*(?:ron|lei)\b', details_text)
+                    if pm:
+                        try:
+                            price = float("".join(pm.group(1).split()))
+                            currency = "RON"
+                        except ValueError:
+                            pass
 
             # Rooms
             rooms = None

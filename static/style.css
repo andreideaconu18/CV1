@@ -24,7 +24,19 @@ a:hover { text-decoration: underline; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .scrape-spinner { display: inline-block; animation: spin 1s linear infinite; }
 
-/* --- Debug button --- */
+/* --- Header buttons (Scan now, Debug) --- */
+.btn-scan {
+    background: none;
+    border: 1px solid #3a3a6a;
+    color: #7eb8ff;
+    border-radius: 4px;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    text-decoration: none;
+}
+.btn-scan:hover { border-color: #6a6aaa; color: #aad4ff; text-decoration: none; }
+
 .btn-debug {
     background: none;
     border: 1px solid #444;

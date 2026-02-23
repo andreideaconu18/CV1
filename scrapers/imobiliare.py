@@ -97,7 +97,10 @@ class ImobiliareScraper(BaseScraper):
             )
             title = title_el.get_text(strip=True) if title_el else None
 
-            # Price
+            # Details blob (needed for price fallback too)
+            details_text = card.get_text(" ", strip=True).lower()
+
+            # Price — try targeted selector first, then regex on full card text
             price, currency = None, "EUR"
             price_el = card.select_one(
                 "[class*='pret'], [class*='price'], .pret-anunt"
@@ -114,9 +117,22 @@ class ImobiliareScraper(BaseScraper):
                     currency = "EUR"
                 elif "RON" in raw.upper() or "LEI" in raw.upper():
                     currency = "RON"
-
-            # Details blob
-            details_text = card.get_text(" ", strip=True).lower()
+            if price is None:
+                # Fallback: extract price from full card text
+                pm = re.search(r'(\d[\d\s]{1,7})\s*(?:€|eur\b)', details_text)
+                if pm:
+                    try:
+                        price = float("".join(pm.group(1).split()))
+                    except ValueError:
+                        pass
+                else:
+                    pm = re.search(r'(\d[\d\s]{1,7})\s*(?:ron|lei)\b', details_text)
+                    if pm:
+                        try:
+                            price = float("".join(pm.group(1).split()))
+                            currency = "RON"
+                        except ValueError:
+                            pass
 
             # Rooms
             rooms = None

@@ -15,6 +15,7 @@
         <div class="header-stats">
             <span class="stat">{{ stats.total }} listings</span>
             <span class="stat">{{ stats.new_today }} new today</span>
+            <a href="/scrape" class="btn-scan">Scan now</a>
             <button class="btn-debug" onclick="openDebug()" title="Debug info">Debug</button>
             <span class="stat last-scan" id="last-scan-stat">
                 {% if stats.scrape_running %}
