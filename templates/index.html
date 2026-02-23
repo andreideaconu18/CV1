@@ -128,12 +128,18 @@
                     const s = runStats[src];
                     if (!s) return '<span style="color:#888">no run recorded yet</span>';
                     if (s.error) return `<span class="debug-error">ERROR: ${escHtml(s.error)}</span>`;
-                    if (s.raw === 0) return '<span class="debug-warn">Fetched 0 listings — site may be blocking requests</span>';
+                    if (s.pages_ok === 0 && s.pages_blocked > 0)
+                        return `<span class="debug-error">BLOCKED — Cloudflare / bot challenge on every page (${s.pages_blocked} blocked)</span>`;
+                    if (s.pages_ok === 0 && s.pages_failed > 0)
+                        return `<span class="debug-error">NETWORK ERROR — all ${s.pages_failed} fetch attempts failed</span>`;
+                    if (s.pages_ok === 0)
+                        return `<span class="debug-warn">No pages fetched — scraper stopped before first request</span>`;
+                    if (s.raw === 0)
+                        return `<span class="debug-warn">Page fetched OK (${s.pages_ok} page${s.pages_ok>1?'s':''}) but 0 listing cards found — CSS selectors may be outdated or content is JS-rendered</span>`;
                     const passed = s.raw - s.area_filtered;
-                    if (s.new === 0) {
-                        return `<span class="debug-ok">OK — ${s.raw} fetched, ${s.area_filtered} outside area, ${passed} checked, all ${s.already_known} already known</span>`;
-                    }
-                    return `<span class="debug-ok">OK — ${s.raw} fetched, ${s.area_filtered} outside area, <strong>${s.new} new</strong>, ${s.already_known} already known</span>`;
+                    if (s.new === 0)
+                        return `<span class="debug-ok">OK — ${s.raw} listings found, ${s.area_filtered} outside area, all ${s.already_known} already known</span>`;
+                    return `<span class="debug-ok">OK — ${s.raw} listings found, ${s.area_filtered} outside area, <strong>${s.new} new</strong>, ${s.already_known} already known</span>`;
                 }
 
                 el.innerHTML = `
@@ -152,11 +158,13 @@ ${sources.map(src => `
   <div class="debug-source-diag">${diagnosisHtml(src)}</div>
   ${runStats[src] && !runStats[src].error ? `
   <div class="debug-source-nums">
-    <span>${runStats[src].raw} fetched</span>
+    <span>${runStats[src].pages_ok} page${runStats[src].pages_ok!==1?'s':''} fetched</span>
+    ${runStats[src].pages_blocked > 0 ? `<span class="debug-warn">${runStats[src].pages_blocked} blocked</span>` : ''}
+    ${runStats[src].pages_failed  > 0 ? `<span class="debug-error">${runStats[src].pages_failed} failed</span>`  : ''}
+    <span class="debug-arrow">→</span>
+    <span>${runStats[src].raw} cards</span>
     <span class="debug-arrow">→</span>
     <span>${runStats[src].area_filtered} outside area</span>
-    <span class="debug-arrow">→</span>
-    <span>${runStats[src].raw - runStats[src].area_filtered} in area</span>
     <span class="debug-arrow">→</span>
     <span class="${runStats[src].new > 0 ? 'debug-new' : ''}">${runStats[src].new} new</span>
     <span>+ ${runStats[src].already_known} known</span>

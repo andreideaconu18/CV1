@@ -45,7 +45,8 @@ def run_scrapers():
         try:
             for scraper in scrapers:
                 src = scraper.SOURCE_NAME
-                stats = {"raw": 0, "area_filtered": 0, "already_known": 0, "new": 0, "error": None}
+                stats = {"raw": 0, "pages_ok": 0, "pages_blocked": 0, "pages_failed": 0,
+                         "area_filtered": 0, "already_known": 0, "new": 0, "error": None}
                 run_stats[src] = stats
                 try:
                     listings = scraper.scrape()
@@ -56,6 +57,9 @@ def run_scrapers():
                     continue
 
                 stats["raw"] = len(listings)
+                stats["pages_ok"] = scraper.fetch_stats["pages_ok"]
+                stats["pages_blocked"] = scraper.fetch_stats["pages_blocked"]
+                stats["pages_failed"] = scraper.fetch_stats["pages_failed"]
                 for listing in listings:
                     if not listing.matches_area(TARGET_AREA, TARGET_NEIGHBORHOODS):
                         stats["area_filtered"] += 1

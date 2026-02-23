@@ -20,6 +20,7 @@ class BaseScraper:
     def __init__(self):
         self.session = requests.Session()
         self._rotate_user_agent()
+        self.fetch_stats = {"pages_ok": 0, "pages_blocked": 0, "pages_failed": 0}
 
     def _rotate_user_agent(self):
         """Set a random user agent."""
@@ -49,13 +50,16 @@ class BaseScraper:
                 body_text = soup.get_text(" ", strip=True)[:300].lower()
                 if any(kw in body_text for kw in ("just a moment", "checking your browser", "enable javascript", "captcha")):
                     logger.warning(f"Bot challenge detected at {url} — scraper is blocked")
+                    self.fetch_stats["pages_blocked"] += 1
                     return None
+                self.fetch_stats["pages_ok"] += 1
                 return soup
             except requests.RequestException as e:
                 logger.warning(f"Attempt {attempt + 1}/{retries} failed for {url}: {e}")
                 if attempt < retries - 1:
                     time.sleep(2 ** (attempt + 1))
         logger.error(f"Failed to fetch {url} after {retries} attempts")
+        self.fetch_stats["pages_failed"] += 1
         return None
 
     def scrape(self):
