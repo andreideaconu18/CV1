@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apartment Scout - Bucharest</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <h1>Apartment Scout</h1>
+            <p class="subtitle">Bucharest &middot; 550-650 EUR &middot; 2 rooms &middot; Decomandat</p>
+        </div>
+        <div class="header-stats">
+            <span class="stat">{{ stats.total }} listings</span>
+            <span class="stat">{{ stats.new_today }} new today</span>
+            <span class="stat last-scan">Last scan: {{ stats.last_scan }}</span>
+        </div>
+    </header>
+
+    <nav class="filters">
+        <a href="?filter=all" class="{{ 'active' if filter == 'all' else '' }}">All ({{ stats.total }})</a>
+        <a href="?filter=new" class="{{ 'active' if filter == 'new' else '' }}">New today ({{ stats.new_today }})</a>
+        <a href="?filter=favorites" class="{{ 'active' if filter == 'favorites' else '' }}">Favorites ({{ stats.favorites }})</a>
+        <a href="?filter=hidden" class="{{ 'active' if filter == 'hidden' else '' }}">Hidden ({{ stats.hidden }})</a>
+        <span class="filter-separator">|</span>
+        <a href="?filter=imobiliare" class="{{ 'active' if filter == 'imobiliare' else '' }}">imobiliare.ro</a>
+        <a href="?filter=storia" class="{{ 'active' if filter == 'storia' else '' }}">storia.ro</a>
+    </nav>
+
+    <main>
+        {% if listings %}
+        <div class="listings-grid">
+            {% for listing in listings %}
+            <div class="listing-card {{ 'favorite' if listing.is_favorite else '' }} {{ 'hidden' if listing.is_hidden else '' }}" data-id="{{ listing.id }}">
+                <div class="listing-image">
+                    {% if listing.image_url %}
+                    <img src="{{ listing.image_url }}" alt="{{ listing.title }}" loading="lazy">
+                    {% else %}
+                    <div class="no-image">No image</div>
+                    {% endif %}
+                    <span class="source-badge {{ listing.source }}">{{ listing.source }}</span>
+                    <span class="age-badge">{{ listing.age_display }}</span>
+                </div>
+                <div class="listing-info">
+                    <div class="listing-price">{{ listing.price_display }}</div>
+                    <h3 class="listing-title">
+                        <a href="{{ listing.url }}" target="_blank" rel="noopener">{{ listing.title or 'No title' }}</a>
+                    </h3>
+                    <div class="listing-details">
+                        {% if listing.rooms %}<span>{{ listing.rooms }} rooms</span>{% endif %}
+                        {% if listing.surface %}<span>{{ listing.surface }} m&sup2;</span>{% endif %}
+                        {% if listing.layout %}<span>{{ listing.layout }}</span>{% endif %}
+                        {% if listing.floor %}<span>Floor {{ listing.floor }}</span>{% endif %}
+                        {% if listing.year_built %}<span>Built {{ listing.year_built }}</span>{% endif %}
+                        {% if listing.has_balcony %}<span class="has-balcony">Balcony</span>{% endif %}
+                    </div>
+                    {% if listing.neighborhood %}
+                    <div class="listing-location">{{ listing.neighborhood }}{% if listing.address %}, {{ listing.address }}{% endif %}</div>
+                    {% endif %}
+                    <div class="listing-actions">
+                        <button class="btn-fav" onclick="toggleFavorite({{ listing.id }})" title="Favorite">
+                            {{ '★' if listing.is_favorite else '☆' }}
+                        </button>
+                        <button class="btn-hide" onclick="toggleHidden({{ listing.id }})" title="Hide">
+                            {{ '👁' if not listing.is_hidden else '👁‍🗨' }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <h2>No listings yet</h2>
+            <p>The scraper is running every {{ interval }} minutes. Check back soon!</p>
+            <a href="/scrape" class="btn-scrape">Run scraper now</a>
+        </div>
+        {% endif %}
+    </main>
+
+    <script>
+        async function toggleFavorite(id) {
+            const res = await fetch(`/api/listing/${id}/favorite`, { method: 'POST' });
+            if (res.ok) location.reload();
+        }
+        async function toggleHidden(id) {
+            const res = await fetch(`/api/listing/${id}/hide`, { method: 'POST' });
+            if (res.ok) location.reload();
+        }
+    </script>
+</body>
+</html>

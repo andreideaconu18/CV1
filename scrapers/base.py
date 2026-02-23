@@ -1,0 +1,57 @@
+"""Base scraper class with common functionality."""
+
+import logging
+import random
+import time
+
+import requests
+from bs4 import BeautifulSoup
+
+from config import USER_AGENTS, REQUEST_TIMEOUT
+
+logger = logging.getLogger(__name__)
+
+
+class BaseScraper:
+    """Base class for apartment scrapers."""
+
+    SOURCE_NAME = "base"
+
+    def __init__(self):
+        self.session = requests.Session()
+        self._rotate_user_agent()
+
+    def _rotate_user_agent(self):
+        """Set a random user agent."""
+        ua = random.choice(USER_AGENTS)
+        self.session.headers.update({
+            "User-Agent": ua,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "ro-RO,ro;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+        })
+
+    def fetch_page(self, url, retries=3):
+        """Fetch a page with retries and polite delays."""
+        for attempt in range(retries):
+            try:
+                self._rotate_user_agent()
+                time.sleep(random.uniform(1.5, 3.5))  # polite delay
+                response = self.session.get(url, timeout=REQUEST_TIMEOUT)
+                response.raise_for_status()
+                return BeautifulSoup(response.text, "lxml")
+            except requests.RequestException as e:
+                logger.warning(f"Attempt {attempt + 1}/{retries} failed for {url}: {e}")
+                if attempt < retries - 1:
+                    time.sleep(2 ** (attempt + 1))
+        logger.error(f"Failed to fetch {url} after {retries} attempts")
+        return None
+
+    def scrape(self):
+        """Scrape listings. Override in subclass."""
+        raise NotImplementedError
+
+    def parse_listing(self, element):
+        """Parse a single listing element. Override in subclass."""
+        raise NotImplementedError
