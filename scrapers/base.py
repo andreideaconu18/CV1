@@ -80,18 +80,23 @@ class BaseScraper:
 
         page_text = soup.get_text(" ", strip=True).lower()
 
-        # Floor: only enrich when card had no max yet
-        if current_floor and "/" not in current_floor and current_floor != "parter":
-            m = _re.search(r"etaj(?:ul)?\s*[:\s]*\d+\s*(?:din|/)\s*(\d+)", page_text)
+        # Floor: prefer the detail page over the card (card may say "10+" when real is "11")
+        # Only skip if the card already gave us a clean "X/Y" value.
+        if not (current_floor and "/" in current_floor):
+            # Pattern 1: "etajul 11/11" or "etajul 11 din 11" → captures both parts
+            m = _re.search(
+                r"etaj(?:ul)?\s*[:\s]*(\d+)\s*(?:din|/)\s*(\d+)", page_text
+            )
             if m:
-                updated_floor = f"{current_floor}/{m.group(1)}"
-            else:
-                m = _re.search(
+                updated_floor = f"{m.group(1)}/{m.group(2)}"
+            elif current_floor and current_floor != "parter":
+                # Pattern 2: only total floors ("total etaje: 11") — keep card number as floor
+                m2 = _re.search(
                     r"(?:nr\.?\s*etaje?|num[aă]r\s*etaje?|total\s*etaje?)[:\s]*(\d+)",
                     page_text,
                 )
-                if m:
-                    updated_floor = f"{current_floor}/{m.group(1)}"
+                if m2:
+                    updated_floor = f"{current_floor}/{m2.group(1)}"
 
         # Gallery images: try known gallery containers, fall back to all imgs
         _SKIP = ("logo", "icon", "sprite", "avatar", "flag", "badge",
