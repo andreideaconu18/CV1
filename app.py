@@ -337,6 +337,61 @@ def debug_fetch():
     return jsonify(results)
 
 
+@app.route("/debug/floor")
+def debug_floor():
+    """Show raw card text around 'etaj' and what floor value gets extracted, for diagnosis."""
+    import re as _re
+    from scrapers.imobiliare import _build_search_url as imob_url
+    from scrapers.storia import _build_search_url as storia_url
+    from scrapers.base import BaseScraper
+
+    scraper = BaseScraper()
+    results = {}
+
+    for name, url, card_sel, link_pat in [
+        ("imobiliare", imob_url(1),
+         "div.ilu-card, article.ilu-card, div[class*='card-']", r"/anunt/"),
+        ("storia", storia_url(1),
+         "article[data-cy='listing-item'], article.css-1id4k1, div[data-testid='listing-item']",
+         r"/ro/oferta/|/oferta/"),
+    ]:
+        try:
+            soup = scraper.fetch_page(url)
+            if soup is None:
+                results[name] = {"status": "blocked_or_failed"}
+                continue
+
+            cards = soup.select(card_sel)
+            if not cards:
+                cards = list({
+                    a.find_parent("article") or a.find_parent("li") or a.find_parent("div")
+                    for a in soup.find_all("a", href=_re.compile(link_pat))
+                    if a.find_parent("article") or a.find_parent("li")
+                } - {None})
+
+            card_data = []
+            for card in cards[:6]:
+                text = card.get_text(" ", strip=True).lower()
+                # Show the 120 chars around first "etaj" mention
+                idx = text.find("etaj")
+                snippet = text[max(0, idx - 20):idx + 100] if idx != -1 else "(no 'etaj' in text)"
+                # Run floor extraction
+                floor = None
+                fm = _re.search(r"etaj(?:ul)?\s*[:\s]*(\d+(?:\s*(?:/|din)\s*\d+)?)", text)
+                if fm:
+                    raw = fm.group(1).strip()
+                    floor = _re.sub(r"\s*din\s*", "/", raw).replace(" ", "")
+                elif _re.search(r"\bparter\b", text):
+                    floor = "parter"
+                card_data.append({"etaj_snippet": snippet, "extracted_floor": floor})
+
+            results[name] = {"status": "ok", "cards_found": len(cards), "sample": card_data}
+        except Exception as e:
+            results[name] = {"status": f"error: {e}"}
+
+    return jsonify(results)
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
