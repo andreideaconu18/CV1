@@ -1,5 +1,6 @@
 """Scraper for storia.ro."""
 
+import json
 import logging
 import re
 
@@ -27,6 +28,82 @@ def _build_search_url(page=1):
     return url
 
 
+def _floor_from_listing_obj(obj):
+    """Extract floor string from a single listing dict from __NEXT_DATA__."""
+    if not isinstance(obj, dict):
+        return None
+
+    # OLX-style params array: [{"key": "m_floor", "value": {"label": "5"}}, ...]
+    params = obj.get("params") or obj.get("parameters") or []
+    if isinstance(params, list):
+        floor_val = None
+        floor_count = None
+        for p in params:
+            if not isinstance(p, dict):
+                continue
+            key = (p.get("key") or "").lower()
+            v = p.get("value")
+            label = None
+            if isinstance(v, dict):
+                label = v.get("label") or v.get("key") or ""
+            elif isinstance(v, (str, int)):
+                label = str(v)
+            if key in ("m_floor", "floor", "etaj"):
+                floor_val = str(label).strip() if label is not None else None
+            elif key in ("m_floor_count", "floor_count", "nr_floors", "etaje"):
+                floor_count = str(label).strip() if label is not None else None
+        if floor_val and floor_count:
+            return f"{floor_val}/{floor_count}"
+        if floor_val:
+            return floor_val
+
+    # Direct string "X/Y" or "parter/Y"
+    for key in ("floor", "etaj", "floorInfo", "floorLabel"):
+        val = obj.get(key)
+        if val and isinstance(val, str) and "/" in val:
+            return val
+
+    # Separate numeric fields
+    floor_num = obj.get("floorNumber") or obj.get("floor_number")
+    total_floors = (
+        obj.get("numberOfFloors") or obj.get("total_floors") or obj.get("floorCount")
+    )
+    if floor_num is not None and total_floors is not None:
+        return f"{floor_num}/{total_floors}"
+
+    return None
+
+
+def extract_next_data_floors(soup):
+    """Parse __NEXT_DATA__ JSON and return {slug -> floor_str} for all listings."""
+    script = soup.find("script", id="__NEXT_DATA__")
+    if not script or not script.string:
+        return {}
+
+    try:
+        data = json.loads(script.string)
+    except (json.JSONDecodeError, ValueError):
+        return {}
+
+    floors = {}
+
+    def _scan(obj):
+        if isinstance(obj, list):
+            for item in obj:
+                _scan(item)
+        elif isinstance(obj, dict):
+            slug = obj.get("slug") or obj.get("id") or obj.get("externalId")
+            if slug:
+                floor_str = _floor_from_listing_obj(obj)
+                if floor_str:
+                    floors[str(slug)] = floor_str
+            for v in obj.values():
+                _scan(v)
+
+    _scan(data)
+    return floors
+
+
 class StoriaScraper(BaseScraper):
     SOURCE_NAME = "storia"
 
@@ -39,6 +116,10 @@ class StoriaScraper(BaseScraper):
             soup = self.fetch_page(url)
             if soup is None:
                 break
+
+            # Extract floor data from __NEXT_DATA__ (already fetched, no extra requests)
+            page_floors = extract_next_data_floors(soup)
+            logger.info(f"storia.ro page {page}: extracted floors for {len(page_floors)} listings from __NEXT_DATA__")
 
             # storia.ro renders listing cards as <article> or divs with data-id
             cards = soup.select(
@@ -57,7 +138,7 @@ class StoriaScraper(BaseScraper):
                 break
 
             for card in cards:
-                listing = self._parse_card(card)
+                listing = self._parse_card(card, page_floors)
                 if listing:
                     listings.append(listing)
 
@@ -74,7 +155,7 @@ class StoriaScraper(BaseScraper):
         logger.info(f"storia.ro: found {len(listings)} listings")
         return listings
 
-    def _parse_card(self, card):
+    def _parse_card(self, card, page_floors=None):
         try:
             # URL + external_id
             link = card.find(
@@ -118,8 +199,6 @@ class StoriaScraper(BaseScraper):
                 elif "RON" in raw.upper() or "LEI" in raw.upper():
                     currency = "RON"
             if price is None:
-                # Fallback: scan full card text. Use \b so "79 m² 600 €" matches
-                # 600, not 9600 (old greedy pattern grabbed "9" from "79").
                 pm = re.search(r'\b(\d{3,5})\s*(?:€|eur\b)', details_text)
                 if pm:
                     try:
@@ -150,14 +229,15 @@ class StoriaScraper(BaseScraper):
                 except ValueError:
                     pass
 
-            # Floor — handles "etaj 3", "etajul 3 din 8", "tip etaj: etajul 3/8"
-            floor = None
-            fm = re.search(r"etaj(?:ul)?\s*[:\s]*(\d+(?:\s*(?:/|din)\s*\d+)?)", details_text)
-            if fm:
-                raw = fm.group(1).strip()
-                floor = re.sub(r"\s*din\s*", "/", raw).replace(" ", "")
-            elif re.search(r"\bparter\b", details_text):
-                floor = "parter"
+            # Floor — try __NEXT_DATA__ JSON first, then card text
+            floor = page_floors.get(external_id) if page_floors else None
+            if not floor:
+                fm = re.search(r"etaj(?:ul)?\s*[:\s]*(\d+(?:\s*(?:/|din)\s*\d+)?)", details_text)
+                if fm:
+                    raw_floor = fm.group(1).strip()
+                    floor = re.sub(r"\s*din\s*", "/", raw_floor).replace(" ", "")
+                elif re.search(r"\bparter\b", details_text):
+                    floor = "parter"
 
             # Year built
             year_built = None
@@ -196,7 +276,7 @@ class StoriaScraper(BaseScraper):
             if img:
                 image_url = img.get("src") or img.get("data-src") or img.get("data-lazy-src")
 
-            # Fetch detail page: total floors (x/max) + up to 4 gallery images
+            # Fetch detail page for gallery images (floor enrichment only if not from JSON)
             floor, extra_images = self._fetch_detail_info(href, floor, image_url)
 
             return Listing(
