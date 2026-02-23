@@ -231,6 +231,40 @@ def debug():
     })
 
 
+@app.route("/debug/fetch")
+def debug_fetch():
+    """Fetch one page from each site and return an HTML preview to diagnose blocking/JS issues."""
+    from scrapers.imobiliare import _build_search_url as imob_url
+    from scrapers.storia import _build_search_url as storia_url
+    from scrapers.base import BaseScraper
+
+    scraper = BaseScraper()
+    results = {}
+
+    for name, url in [("imobiliare", imob_url(1)), ("storia", storia_url(1))]:
+        try:
+            soup = scraper.fetch_page(url)
+            if soup is None:
+                results[name] = {"url": url, "status": "blocked_or_failed", "html_preview": None}
+            else:
+                text = soup.get_text(" ", strip=True)
+                cards_imob = len(soup.select("div.ilu-card, article.ilu-card, div[class*='card-']"))
+                cards_storia = len(soup.select("article[data-cy='listing-item'], article.css-1id4k1, div[data-testid='listing-item']"))
+                all_articles = len(soup.find_all("article"))
+                results[name] = {
+                    "url": url,
+                    "status": "ok",
+                    "html_bytes": len(soup.encode()),
+                    "cards_matched": cards_imob if name == "imobiliare" else cards_storia,
+                    "total_articles": all_articles,
+                    "text_preview": text[:500],
+                }
+        except Exception as e:
+            results[name] = {"url": url, "status": f"error: {e}"}
+
+    return jsonify(results)
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
