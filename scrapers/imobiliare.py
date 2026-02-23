@@ -14,17 +14,14 @@ BASE_URL = "https://www.imobiliare.ro"
 
 def _build_search_url(page=1):
     c = SEARCH_CRITERIA
-    # /inchirieri-apartamente/bucuresti/?nr-camere=2&pret-min=550&...
-    city = c["city"]
-    url = f"{BASE_URL}/inchirieri-apartamente/{city}/"
+    # /inchirieri-apartamente/2-camere?price=550-650&comfort=1,luxury
+    # Note: imobiliare.ro has no year-built filter in search URL — year is extracted
+    # from each listing's text. Balcony filter omitted intentionally: agents often
+    # forget to tick it, so we detect balcony from description text instead.
+    url = f"{BASE_URL}/inchirieri-apartamente/{c['rooms']}-camere"
     params = (
-        f"?nr-camere={c['rooms']}"
-        f"&pret-min={c['price_min']}"
-        f"&pret-max={c['price_max']}"
-        f"&moneda={c['currency']}"
-        f"&tip-compartimentare=decomandat"
-        f"&an-constructie-min={c['year_min']}"
-        f"&balcon=da"
+        f"?price={c['price_min']}-{c['price_max']}"
+        f"&comfort=1,luxury"
         f"&pagina={page}"
     )
     return url + params

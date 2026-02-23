@@ -10,7 +10,7 @@ SEARCH_CRITERIA = {
     "price_max": 650,
     "currency": "EUR",
     "layout": "decomandat",  # separate rooms, not open-plan
-    "year_min": 1980,  # built after 1979
+    "year_min": 1979,  # storia uses buildYearMin=year_min; imobiliare has no year URL filter
     "balcony": True,
 }
 

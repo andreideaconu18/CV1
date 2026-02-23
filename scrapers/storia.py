@@ -14,16 +14,14 @@ BASE_URL = "https://www.storia.ro"
 
 def _build_search_url(page=1):
     c = SEARCH_CRITERIA
-    # storia uses /inchiriere/apartament/2-camere/bucuresti/ style paths
+    # storia uses /ro/rezultate/inchiriere/apartament,2-camere/bucuresti style paths
     url = (
-        f"{BASE_URL}/inchiriere/apartament/{c['rooms']}-camere/{c['city']}/"
-        f"?priceMin={c['price_min']}&priceMax={c['price_max']}"
-        f"&currency={c['currency']}"
-        f"&roomsNumber={c['rooms']}"
-        f"&builtYearMin={c['year_min']}"
-        f"&buildingType=APARTMENT"
-        f"&ownership=decomandat"
-        f"&hasGarage=0"
+        f"{BASE_URL}/ro/rezultate/inchiriere/apartament,{c['rooms']}-camere/{c['city']}"
+        f"?limit=36"
+        f"&priceMin={c['price_min']}"
+        f"&priceMax={c['price_max']}"
+        f"&buildYearMin={c['year_min']}"
+        f"&by=DEFAULT&direction=DESC"
         f"&page={page}"
     )
     return url
