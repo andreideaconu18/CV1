@@ -67,11 +67,11 @@ class Listing(Base):
     @property
     def extra_images_list(self):
         """Parse extra_images JSON string into a Python list (max 4 items)."""
-        if not self.extra_images:
-            return []
         try:
+            if not self.extra_images:
+                return []
             return json.loads(self.extra_images)[:4]
-        except (json.JSONDecodeError, TypeError):
+        except Exception:
             return []
 
     @property
@@ -108,12 +108,26 @@ def init_db():
 
 
 def migrate_db():
-    """Apply lightweight schema migrations (safe to re-run)."""
-    with engine.connect() as conn:
-        conn.execute(text(
-            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS extra_images TEXT"
-        ))
-        conn.commit()
+    """Apply lightweight schema migrations (safe to re-run).
+
+    Wraps every ALTER in a separate connection so that a failure on one
+    statement does not abort the others, and the app still starts even if
+    a migration cannot be applied (e.g. read-only replica, permission gap).
+    """
+    migrations = [
+        "ALTER TABLE listings ADD COLUMN IF NOT EXISTS extra_images TEXT",
+    ]
+    for sql in migrations:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text(sql))
+                conn.commit()
+        except Exception as exc:
+            # Log and continue — a missing column is better than a dead process
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                f"migrate_db: could not apply '{sql}': {exc}"
+            )
 
 
 def get_db():
