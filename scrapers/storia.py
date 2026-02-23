@@ -158,6 +158,9 @@ class StoriaScraper(BaseScraper):
                 floor = re.sub(r"\s*din\s*", "/", raw).replace(" ", "")
             elif re.search(r"\bparter\b", details_text):
                 floor = "parter"
+            # Cards only show the floor number; fetch detail page for total (x/max)
+            if floor and "/" not in floor and floor != "parter":
+                floor = self._fetch_max_floor(href, floor)
 
             # Year built
             year_built = None

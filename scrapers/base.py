@@ -63,6 +63,28 @@ class BaseScraper:
         self.fetch_stats["pages_failed"] += 1
         return None
 
+    def _fetch_max_floor(self, url, current_floor):
+        """Fetch a listing's detail page to find total floor count (for 'x/max' format).
+
+        Returns updated floor string like '3/8', or current_floor unchanged if not found.
+        """
+        import re as _re
+        if not current_floor or "/" in current_floor or current_floor == "parter":
+            return current_floor
+        soup = self.fetch_page(url)
+        if not soup:
+            return current_floor
+        text = soup.get_text(" ", strip=True).lower()
+        # "etajul 3 din 8" or "etaj 3/8" anywhere on the detail page
+        m = _re.search(r"etaj(?:ul)?\s*[:\s]*\d+\s*(?:din|/)\s*(\d+)", text)
+        if m:
+            return f"{current_floor}/{m.group(1)}"
+        # "nr. etaje: 8" / "număr etaje: 8" / "total etaje: 8"
+        m = _re.search(r"(?:nr\.?\s*etaje?|num[aă]r\s*etaje?|total\s*etaje?)[:\s]*(\d+)", text)
+        if m:
+            return f"{current_floor}/{m.group(1)}"
+        return current_floor
+
     def scrape(self):
         """Scrape listings. Override in subclass."""
         raise NotImplementedError
