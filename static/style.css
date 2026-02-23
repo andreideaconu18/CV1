@@ -11,6 +11,16 @@ body {
 a { color: #7eb8ff; text-decoration: none; }
 a:hover { text-decoration: underline; }
 
+/* --- Scraping Banner --- */
+.scraping-banner {
+    background: #2a2a00;
+    border-bottom: 1px solid #555500;
+    padding: 0.7rem 1.5rem;
+    color: #ffee99;
+    font-size: 0.9rem;
+}
+.scraping-banner a { color: #ffee99; font-weight: 600; margin-left: 0.5rem; }
+
 /* --- Header --- */
 header {
     background: #1a1a2e;

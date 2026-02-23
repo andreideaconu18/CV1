@@ -19,6 +19,13 @@
         </div>
     </header>
 
+    {% if request.args.get('scraping') %}
+    <div class="scraping-banner">
+        ⏳ Scraper is running in the background — check back in ~2 minutes.
+        <a href="/">Refresh</a>
+    </div>
+    {% endif %}
+
     <nav class="filters">
         <a href="?filter=all" class="{{ 'active' if filter == 'all' else '' }}">All ({{ stats.total }})</a>
         <a href="?filter=new" class="{{ 'active' if filter == 'new' else '' }}">New today ({{ stats.new_today }})</a>

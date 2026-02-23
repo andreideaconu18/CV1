@@ -23,6 +23,7 @@ app = Flask(__name__)
 init_db()
 
 _last_scan: datetime.datetime | None = None
+_last_error: str | None = None
 _scrape_lock = threading.Lock()
 
 
@@ -31,7 +32,7 @@ _scrape_lock = threading.Lock()
 # ---------------------------------------------------------------------------
 
 def run_scrapers():
-    global _last_scan
+    global _last_scan, _last_error
     if not _scrape_lock.acquire(blocking=False):
         logger.info("Scrape already in progress, skipping.")
         return
@@ -41,16 +42,19 @@ def run_scrapers():
         db = SessionLocal()
         try:
             new_count = 0
+            filtered_count = 0
             for scraper in scrapers:
                 try:
                     listings = scraper.scrape()
                 except Exception as e:
+                    _last_error = f"{scraper.SOURCE_NAME}: {e}"
                     logger.error(f"{scraper.SOURCE_NAME} scraper failed: {e}")
                     continue
 
                 for listing in listings:
                     # Area filter
                     if not listing.matches_area(TARGET_AREA, TARGET_NEIGHBORHOODS):
+                        filtered_count += 1
                         continue
                     existing = (
                         db.query(Listing)
@@ -66,7 +70,7 @@ def run_scrapers():
 
             db.commit()
             _last_scan = datetime.datetime.utcnow()
-            logger.info(f"Scrape done. {new_count} new listings added.")
+            logger.info(f"Scrape done. {new_count} new listings added. {filtered_count} filtered by area.")
         finally:
             db.close()
     finally:
@@ -86,6 +90,10 @@ def _start_scheduler():
     t = threading.Thread(target=loop, daemon=True, name="scraper-thread")
     t.start()
     logger.info(f"Scraper scheduled every {SCRAPE_INTERVAL_MINUTES} min.")
+
+
+# Start scheduler when module is imported (covers gunicorn + direct run)
+_start_scheduler()
 
 
 # ---------------------------------------------------------------------------
@@ -187,8 +195,40 @@ def toggle_hidden(listing_id):
 @app.route("/scrape")
 def trigger_scrape():
     """Manual scrape trigger."""
-    threading.Thread(target=run_scrapers, daemon=True).start()
-    return redirect(url_for("index"))
+    scraping_now = _scrape_lock.locked()
+    if not scraping_now:
+        threading.Thread(target=run_scrapers, daemon=True).start()
+    return redirect(url_for("index", scraping=1))
+
+
+@app.route("/debug")
+def debug():
+    """Debug endpoint: raw DB counts + scraper state."""
+    db = SessionLocal()
+    try:
+        total = db.query(func.count(Listing.id)).scalar()
+        active = db.query(func.count(Listing.id)).filter_by(is_active=True).scalar()
+        by_source = {
+            "imobiliare": db.query(func.count(Listing.id)).filter_by(source="imobiliare").scalar(),
+            "storia": db.query(func.count(Listing.id)).filter_by(source="storia").scalar(),
+        }
+        recent = [
+            {"id": l.id, "source": l.source, "title": l.title,
+             "neighborhood": l.neighborhood, "price": l.price,
+             "first_seen": l.first_seen.isoformat() if l.first_seen else None}
+            for l in db.query(Listing).order_by(Listing.first_seen.desc()).limit(10).all()
+        ]
+    finally:
+        db.close()
+    return jsonify({
+        "last_scan": _last_scan.isoformat() if _last_scan else None,
+        "scrape_running": _scrape_lock.locked(),
+        "last_error": _last_error,
+        "total_in_db": total,
+        "active": active,
+        "by_source": by_source,
+        "recent_10": recent,
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +236,4 @@ def trigger_scrape():
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    init_db()
-    _start_scheduler()
     app.run(host="0.0.0.0", port=PORT, debug=False)

@@ -39,8 +39,18 @@ class BaseScraper:
                 self._rotate_user_agent()
                 time.sleep(random.uniform(1.5, 3.5))  # polite delay
                 response = self.session.get(url, timeout=REQUEST_TIMEOUT)
+                logger.info(
+                    f"HTTP {response.status_code} for {url} "
+                    f"({len(response.content)} bytes)"
+                )
                 response.raise_for_status()
-                return BeautifulSoup(response.text, "lxml")
+                soup = BeautifulSoup(response.text, "lxml")
+                # Detect bot/JS challenge pages
+                body_text = soup.get_text(" ", strip=True)[:300].lower()
+                if any(kw in body_text for kw in ("just a moment", "checking your browser", "enable javascript", "captcha")):
+                    logger.warning(f"Bot challenge detected at {url} — scraper is blocked")
+                    return None
+                return soup
             except requests.RequestException as e:
                 logger.warning(f"Attempt {attempt + 1}/{retries} failed for {url}: {e}")
                 if attempt < retries - 1:
