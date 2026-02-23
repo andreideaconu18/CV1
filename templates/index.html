@@ -59,14 +59,37 @@
         <div class="listings-grid">
             {% for listing in listings %}
             <div class="listing-card {{ 'favorite' if listing.is_favorite else '' }} {{ 'hidden' if listing.is_hidden else '' }}" data-id="{{ listing.id }}">
-                <div class="listing-image">
-                    {% if listing.image_url %}
-                    <img src="{{ listing.image_url }}" alt="{{ listing.title }}" loading="lazy">
-                    {% else %}
-                    <div class="no-image">No image</div>
-                    {% endif %}
+                {% set extras = listing.extra_images_list %}
+                <div class="listing-image img-slider" data-slide="0">
+                    <div class="img-track">
+                        <!-- Slide 1: main photo -->
+                        <div class="img-slide">
+                            {% if listing.image_url %}
+                            <img src="{{ listing.image_url }}" alt="{{ listing.title }}" loading="lazy">
+                            {% else %}
+                            <div class="no-image">No image</div>
+                            {% endif %}
+                        </div>
+                        <!-- Slide 2: 2×2 collage of next 4 photos -->
+                        {% if extras %}
+                        <div class="img-slide img-collage">
+                            {% for u in extras %}
+                            <img src="{{ u }}" alt="" loading="lazy">
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    <!-- Overlays always on top -->
                     <span class="source-badge {{ listing.source }}">{{ listing.source }}</span>
                     <span class="age-badge">{{ listing.age_display }}</span>
+                    {% if extras %}
+                    <button class="slider-btn slider-prev" onclick="slideImg(this,-1)" aria-label="Previous">&#8249;</button>
+                    <button class="slider-btn slider-next" onclick="slideImg(this,1)" aria-label="Next">&#8250;</button>
+                    <div class="slider-dots">
+                        <span class="dot active" onclick="slideTo(this,0)"></span>
+                        <span class="dot" onclick="slideTo(this,1)"></span>
+                    </div>
+                    {% endif %}
                 </div>
                 <div class="listing-info">
                     <div class="listing-price">{{ listing.price_display }}</div>
@@ -185,6 +208,21 @@ ${d.recent_10.length === 0 ? '<p style="color:#888">none</p>' : d.recent_10.map(
         }
         function escHtml(s) {
             return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        // Photo slider
+        function _applySlide(slider, idx) {
+            const total = slider.querySelectorAll('.img-slide').length;
+            idx = (idx + total) % total;
+            slider.dataset.slide = idx;
+            slider.querySelector('.img-track').style.transform = `translateX(-${idx * 100}%)`;
+            slider.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+        }
+        function slideImg(btn, dir) {
+            _applySlide(btn.closest('.img-slider'), parseInt(btn.closest('.img-slider').dataset.slide || '0') + dir);
+        }
+        function slideTo(dot, idx) {
+            _applySlide(dot.closest('.img-slider'), idx);
         }
 
         // Poll /debug every 4s while a scrape is running; reload when it finishes

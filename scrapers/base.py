@@ -63,27 +63,71 @@ class BaseScraper:
         self.fetch_stats["pages_failed"] += 1
         return None
 
-    def _fetch_max_floor(self, url, current_floor):
-        """Fetch a listing's detail page to find total floor count (for 'x/max' format).
+    def _fetch_detail_info(self, url, current_floor, first_image_url=None):
+        """Fetch a listing's detail page to get total floor count AND up to 4 gallery images.
 
-        Returns updated floor string like '3/8', or current_floor unchanged if not found.
+        Returns (updated_floor_str, extra_images_json_str_or_None).
         """
         import re as _re
-        if not current_floor or "/" in current_floor or current_floor == "parter":
-            return current_floor
+        import json as _json
+
+        updated_floor = current_floor
+        extra_imgs = []
+
         soup = self.fetch_page(url)
         if not soup:
-            return current_floor
-        text = soup.get_text(" ", strip=True).lower()
-        # "etajul 3 din 8" or "etaj 3/8" anywhere on the detail page
-        m = _re.search(r"etaj(?:ul)?\s*[:\s]*\d+\s*(?:din|/)\s*(\d+)", text)
-        if m:
-            return f"{current_floor}/{m.group(1)}"
-        # "nr. etaje: 8" / "număr etaje: 8" / "total etaje: 8"
-        m = _re.search(r"(?:nr\.?\s*etaje?|num[aă]r\s*etaje?|total\s*etaje?)[:\s]*(\d+)", text)
-        if m:
-            return f"{current_floor}/{m.group(1)}"
-        return current_floor
+            return updated_floor, None
+
+        page_text = soup.get_text(" ", strip=True).lower()
+
+        # Floor: only enrich when card had no max yet
+        if current_floor and "/" not in current_floor and current_floor != "parter":
+            m = _re.search(r"etaj(?:ul)?\s*[:\s]*\d+\s*(?:din|/)\s*(\d+)", page_text)
+            if m:
+                updated_floor = f"{current_floor}/{m.group(1)}"
+            else:
+                m = _re.search(
+                    r"(?:nr\.?\s*etaje?|num[aă]r\s*etaje?|total\s*etaje?)[:\s]*(\d+)",
+                    page_text,
+                )
+                if m:
+                    updated_floor = f"{current_floor}/{m.group(1)}"
+
+        # Gallery images: try known gallery containers, fall back to all imgs
+        _SKIP = ("logo", "icon", "sprite", "avatar", "flag", "badge",
+                 "placeholder", "loading", "blur", "data:")
+
+        def _is_photo(src):
+            if not src or len(src) < 15 or src.startswith("data:"):
+                return False
+            sl = src.lower()
+            return not any(x in sl for x in _SKIP)
+
+        seen = {first_image_url} if first_image_url else set()
+        source_imgs = []
+        for sel in (
+            "[data-cy*='gallery']", "[class*='gallery']", "[class*='Gallery']",
+            "[class*='photos']", "[class*='Photos']",
+            "[class*='slider']", "[class*='Slider']",
+            "[data-testid*='gallery']", "[data-testid*='photo']",
+        ):
+            container = soup.select_one(sel)
+            if container:
+                source_imgs = container.find_all("img")
+                break
+        if not source_imgs:
+            source_imgs = soup.find_all("img")
+
+        for img_tag in source_imgs:
+            src = (img_tag.get("src") or img_tag.get("data-src")
+                   or img_tag.get("data-lazy-src"))
+            if src and src not in seen and _is_photo(src):
+                seen.add(src)
+                extra_imgs.append(src)
+                if len(extra_imgs) >= 4:
+                    break
+
+        return updated_floor, (_json.dumps(extra_imgs) if extra_imgs else None)
 
     def scrape(self):
         """Scrape listings. Override in subclass."""

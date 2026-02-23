@@ -1,7 +1,8 @@
 """Database setup and models."""
 
 import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, Text
+import json
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, Text, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from config import DATABASE_URL
@@ -35,6 +36,7 @@ class Listing(Base):
     longitude = Column(Float)
     description = Column(Text)
     image_url = Column(String)
+    extra_images = Column(String)  # JSON list of up to 4 extra photo URLs
     has_balcony = Column(Boolean)
 
     # Metadata
@@ -61,6 +63,16 @@ class Listing(Base):
             nb = self.neighborhood.lower().strip()
             return any(t in nb or nb in t for t in target_neighborhoods)
         return True  # If no location info, include it (user can filter manually)
+
+    @property
+    def extra_images_list(self):
+        """Parse extra_images JSON string into a Python list (max 4 items)."""
+        if not self.extra_images:
+            return []
+        try:
+            return json.loads(self.extra_images)[:4]
+        except (json.JSONDecodeError, TypeError):
+            return []
 
     @property
     def floor_display(self):
@@ -93,6 +105,15 @@ class Listing(Base):
 def init_db():
     """Create all tables."""
     Base.metadata.create_all(engine)
+
+
+def migrate_db():
+    """Apply lightweight schema migrations (safe to re-run)."""
+    with engine.connect() as conn:
+        conn.execute(text(
+            "ALTER TABLE listings ADD COLUMN IF NOT EXISTS extra_images TEXT"
+        ))
+        conn.commit()
 
 
 def get_db():

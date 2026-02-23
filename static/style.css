@@ -197,7 +197,7 @@ main {
     opacity: 0.4;
 }
 
-/* --- Image --- */
+/* --- Image / slider --- */
 .listing-image {
     position: relative;
     height: 200px;
@@ -205,10 +205,40 @@ main {
     overflow: hidden;
 }
 
-.listing-image img {
+/* Slider track — slides sit side-by-side, track shifts on navigate */
+.img-track {
+    display: flex;
+    height: 100%;
+    transition: transform 0.3s ease;
+}
+
+.img-slide {
+    min-width: 100%;
+    height: 100%;
+    flex-shrink: 0;
+}
+
+.img-slide img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    display: block;
+}
+
+/* 2×2 collage for slide 2 */
+.img-collage {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 2px;
+    background: #111;
+}
+
+.img-collage img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
 }
 
 .no-image {
@@ -219,6 +249,48 @@ main {
     color: #444;
     font-size: 0.9rem;
 }
+
+/* Prev / Next arrows */
+.slider-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    font-size: 1.6rem;
+    line-height: 1;
+    padding: 0.15rem 0.45rem 0.25rem;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 3;
+    user-select: none;
+}
+.listing-image:hover .slider-btn { opacity: 1; }
+.slider-prev { left: 6px; }
+.slider-next { right: 6px; }
+
+/* Dot indicators */
+.slider-dots {
+    position: absolute;
+    bottom: 7px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 5px;
+    z-index: 3;
+}
+.dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.35);
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.dot.active { background: #fff; }
 
 .source-badge {
     position: absolute;

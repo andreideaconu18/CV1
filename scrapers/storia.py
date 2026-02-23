@@ -158,9 +158,6 @@ class StoriaScraper(BaseScraper):
                 floor = re.sub(r"\s*din\s*", "/", raw).replace(" ", "")
             elif re.search(r"\bparter\b", details_text):
                 floor = "parter"
-            # Cards only show the floor number; fetch detail page for total (x/max)
-            if floor and "/" not in floor and floor != "parter":
-                floor = self._fetch_max_floor(href, floor)
 
             # Year built
             year_built = None
@@ -193,11 +190,14 @@ class StoriaScraper(BaseScraper):
                     neighborhood = parts[-1] if len(parts) > 1 else parts[0]
                     address = ", ".join(parts[:-1]) if len(parts) > 1 else None
 
-            # Image
+            # Image (card thumbnail)
             image_url = None
             img = card.find("img")
             if img:
                 image_url = img.get("src") or img.get("data-src") or img.get("data-lazy-src")
+
+            # Fetch detail page: total floors (x/max) + up to 4 gallery images
+            floor, extra_images = self._fetch_detail_info(href, floor, image_url)
 
             return Listing(
                 external_id=f"storia_{external_id}",
@@ -215,6 +215,7 @@ class StoriaScraper(BaseScraper):
                 address=address,
                 has_balcony=has_balcony,
                 image_url=image_url,
+                extra_images=extra_images,
             )
         except Exception as e:
             logger.warning(f"Failed to parse storia card: {e}")

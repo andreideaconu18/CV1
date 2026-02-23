@@ -8,7 +8,7 @@ from flask import Flask, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import func
 
 from config import PORT, REQUEST_TIMEOUT, SCRAPE_INTERVAL_MINUTES, SEARCH_CRITERIA, TARGET_AREA, TARGET_NEIGHBORHOODS
-from database import Listing, SessionLocal, init_db
+from database import Listing, SessionLocal, init_db, migrate_db
 from scrapers import ImobiliareScraper, StoriaScraper
 
 logging.basicConfig(
@@ -19,8 +19,9 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Ensure tables exist when gunicorn imports this module
+# Ensure tables exist and schema is up to date when gunicorn imports this module
 init_db()
+migrate_db()
 
 _last_scan: datetime.datetime | None = None
 _last_error: str | None = None
@@ -95,6 +96,8 @@ def run_scrapers():
                         existing.is_active = True
                         if listing.floor is not None:
                             existing.floor = listing.floor
+                        if listing.extra_images is not None:
+                            existing.extra_images = listing.extra_images
                         stats["already_known"] += 1
                     else:
                         db.add(listing)
