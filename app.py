@@ -93,6 +93,8 @@ def run_scrapers():
                     if existing:
                         existing.last_seen = datetime.datetime.utcnow()
                         existing.is_active = True
+                        if listing.floor is not None:
+                            existing.floor = listing.floor
                         stats["already_known"] += 1
                     else:
                         db.add(listing)

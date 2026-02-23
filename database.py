@@ -63,6 +63,13 @@ class Listing(Base):
         return True  # If no location info, include it (user can filter manually)
 
     @property
+    def floor_display(self):
+        """Return floor only when it contains a digit (e.g. '3/8', '3'); hides stale values like 'etajul'."""
+        if self.floor and (any(c.isdigit() for c in self.floor) or self.floor == "parter"):
+            return self.floor
+        return None
+
+    @property
     def price_display(self):
         if self.price:
             return f"{self.price:,.0f} {self.currency or 'EUR'}"
