@@ -32,20 +32,16 @@ _last_run_stats: dict = {}  # keyed by source name
 # Scraping
 # ---------------------------------------------------------------------------
 
-def _check_stale_listings(db, since):
-    """HEAD-check active listings not refreshed this cycle; mark 404s inactive."""
+def _check_active_listings_404(db):
+    """HEAD-check every active listing; mark any 404 as inactive."""
     import requests as _req
-    stale = (
-        db.query(Listing)
-        .filter(Listing.is_active == True, Listing.last_seen < since)
-        .all()
-    )
-    if not stale:
+    active = db.query(Listing).filter(Listing.is_active == True).all()
+    if not active:
         return
-    logger.info(f"Checking {len(stale)} stale listing(s) for 404…")
+    logger.info(f"404-checking {len(active)} active listing(s)…")
     session = _req.Session()
     session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-    for listing in stale:
+    for listing in active:
         try:
             resp = session.head(listing.url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
             if resp.status_code == 404:
@@ -63,7 +59,6 @@ def run_scrapers():
         return
     try:
         logger.info("Starting scrape cycle…")
-        scrape_started_at = datetime.datetime.utcnow()
         scrapers = [ImobiliareScraper(), StoriaScraper()]
         db = SessionLocal()
         run_stats = {}
@@ -104,7 +99,7 @@ def run_scrapers():
                         stats["new"] += 1
 
             db.commit()
-            _check_stale_listings(db, scrape_started_at)
+            _check_active_listings_404(db)
             _last_scan = datetime.datetime.utcnow()
             _last_run_stats = run_stats
             total_new = sum(s["new"] for s in run_stats.values())
