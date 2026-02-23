@@ -259,6 +259,7 @@ def debug():
 @app.route("/debug/fetch")
 def debug_fetch():
     """Fetch one page from each site and return an HTML preview to diagnose blocking/JS issues."""
+    import re as _re
     from scrapers.imobiliare import _build_search_url as imob_url
     from scrapers.storia import _build_search_url as storia_url
     from scrapers.base import BaseScraper
@@ -276,12 +277,35 @@ def debug_fetch():
                 cards_imob = len(soup.select("div.ilu-card, article.ilu-card, div[class*='card-']"))
                 cards_storia = len(soup.select("article[data-cy='listing-item'], article.css-1id4k1, div[data-testid='listing-item']"))
                 all_articles = len(soup.find_all("article"))
+
+                # Collect unique classes from article/li/div tags for selector diagnosis
+                tag_classes = {}
+                for tag in soup.find_all(["article", "li", "section"]):
+                    cls = tag.get("class")
+                    if cls:
+                        key = f"{tag.name}.{' '.join(cls)}"
+                        tag_classes[key] = tag_classes.get(key, 0) + 1
+                # Also find all /anunt/ links and their immediate parent classes
+                anunt_links = soup.find_all("a", href=_re.compile(r"/anunt/"))
+                anunt_parent_classes = []
+                for a in anunt_links[:5]:
+                    p = a.find_parent(["article", "li", "div", "section"])
+                    if p:
+                        anunt_parent_classes.append({
+                            "tag": p.name,
+                            "class": p.get("class"),
+                            "href": a.get("href", "")[:80],
+                        })
+
                 results[name] = {
                     "url": url,
                     "status": "ok",
                     "html_bytes": len(soup.encode()),
                     "cards_matched": cards_imob if name == "imobiliare" else cards_storia,
                     "total_articles": all_articles,
+                    "anunt_links_found": len(anunt_links),
+                    "anunt_parent_classes": anunt_parent_classes,
+                    "article_li_classes": dict(sorted(tag_classes.items(), key=lambda x: -x[1])[:20]),
                     "text_preview": text[:500],
                 }
         except Exception as e:
