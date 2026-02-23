@@ -15,14 +15,19 @@
         <div class="header-stats">
             <span class="stat">{{ stats.total }} listings</span>
             <span class="stat">{{ stats.new_today }} new today</span>
-            <span class="stat last-scan">Last scan: {{ stats.last_scan }}</span>
+            <span class="stat last-scan" id="last-scan-stat">
+                {% if stats.scrape_running %}
+                <span class="scrape-spinner">&#9696;</span> Scraping now…
+                {% else %}
+                Last scan: {{ stats.last_scan }}
+                {% endif %}
+            </span>
         </div>
     </header>
 
-    {% if request.args.get('scraping') %}
-    <div class="scraping-banner">
-        ⏳ Scraper is running in the background — check back in ~2 minutes.
-        <a href="/">Refresh</a>
+    {% if stats.scrape_running %}
+    <div class="scraping-banner" id="scraping-banner">
+        <span class="scrape-spinner">&#9696;</span> Scraper is running — page will refresh when done.
     </div>
     {% endif %}
 
@@ -96,6 +101,24 @@
             const res = await fetch(`/api/listing/${id}/hide`, { method: 'POST' });
             if (res.ok) location.reload();
         }
+
+        // Poll /debug every 4s while a scrape is running; reload when it finishes
+        (function () {
+            const stat = document.getElementById('last-scan-stat');
+            let running = stat && stat.textContent.includes('Scraping now');
+            if (!running) return;
+
+            const interval = setInterval(async () => {
+                try {
+                    const res = await fetch('/debug');
+                    const data = await res.json();
+                    if (!data.scrape_running) {
+                        clearInterval(interval);
+                        location.reload();
+                    }
+                } catch (_) {}
+            }, 4000);
+        })();
     </script>
 </body>
 </html>

@@ -21,6 +21,9 @@ a:hover { text-decoration: underline; }
 }
 .scraping-banner a { color: #ffee99; font-weight: 600; margin-left: 0.5rem; }
 
+@keyframes spin { to { transform: rotate(360deg); } }
+.scrape-spinner { display: inline-block; animation: spin 1s linear infinite; }
+
 /* --- Header --- */
 header {
     background: #1a1a2e;

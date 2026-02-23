@@ -100,6 +100,19 @@ _start_scheduler()
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _relative_time(dt):
+    if dt is None:
+        return "never"
+    delta = datetime.datetime.utcnow() - dt
+    minutes = int(delta.total_seconds() / 60)
+    if minutes < 1:
+        return "just now"
+    if minutes < 60:
+        return f"{minutes} min ago"
+    hours = minutes // 60
+    return f"{hours}h ago"
+
+
 def _get_stats(db):
     today = datetime.datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     total = db.query(func.count(Listing.id)).filter_by(is_active=True, is_hidden=False).scalar()
@@ -111,10 +124,7 @@ def _get_stats(db):
     favorites = db.query(func.count(Listing.id)).filter_by(is_favorite=True, is_active=True).scalar()
     hidden = db.query(func.count(Listing.id)).filter_by(is_hidden=True).scalar()
 
-    if _last_scan:
-        last_scan_str = _last_scan.strftime("%H:%M")
-    else:
-        last_scan_str = "never"
+    last_scan_str = _relative_time(_last_scan)
 
     return {
         "total": total,
@@ -122,6 +132,7 @@ def _get_stats(db):
         "favorites": favorites,
         "hidden": hidden,
         "last_scan": last_scan_str,
+        "scrape_running": _scrape_lock.locked(),
     }
 
 
