@@ -131,7 +131,7 @@
                     if (s.pages_ok === 0 && s.pages_blocked > 0)
                         return `<span class="debug-error">BLOCKED — Cloudflare / bot challenge on every page (${s.pages_blocked} blocked)</span>`;
                     if (s.pages_ok === 0 && s.pages_failed > 0)
-                        return `<span class="debug-error">NETWORK ERROR — all ${s.pages_failed} fetch attempts failed</span>`;
+                        return `<span class="debug-error">NETWORK ERROR — all ${s.pages_failed} fetch attempts failed<br><code style="font-size:0.75rem;color:#ff9999">${escHtml(s.fetch_error ?? 'unknown')}</code></span>`;
                     if (s.pages_ok === 0)
                         return `<span class="debug-warn">No pages fetched — scraper stopped before first request</span>`;
                     if (s.raw === 0)

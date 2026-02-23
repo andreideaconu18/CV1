@@ -60,6 +60,7 @@ def run_scrapers():
                 stats["pages_ok"] = scraper.fetch_stats["pages_ok"]
                 stats["pages_blocked"] = scraper.fetch_stats["pages_blocked"]
                 stats["pages_failed"] = scraper.fetch_stats["pages_failed"]
+                stats["fetch_error"] = scraper.fetch_stats["last_error"]
                 for listing in listings:
                     if not listing.matches_area(TARGET_AREA, TARGET_NEIGHBORHOODS):
                         stats["area_filtered"] += 1

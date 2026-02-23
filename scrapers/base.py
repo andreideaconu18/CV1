@@ -20,7 +20,7 @@ class BaseScraper:
     def __init__(self):
         self.session = requests.Session()
         self._rotate_user_agent()
-        self.fetch_stats = {"pages_ok": 0, "pages_blocked": 0, "pages_failed": 0}
+        self.fetch_stats = {"pages_ok": 0, "pages_blocked": 0, "pages_failed": 0, "last_error": None}
 
     def _rotate_user_agent(self):
         """Set a random user agent."""
@@ -55,6 +55,7 @@ class BaseScraper:
                 self.fetch_stats["pages_ok"] += 1
                 return soup
             except requests.RequestException as e:
+                self.fetch_stats["last_error"] = str(e)
                 logger.warning(f"Attempt {attempt + 1}/{retries} failed for {url}: {e}")
                 if attempt < retries - 1:
                     time.sleep(2 ** (attempt + 1))
