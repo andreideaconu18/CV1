@@ -15,6 +15,7 @@
         <div class="header-stats">
             <span class="stat">{{ stats.total }} listings</span>
             <span class="stat">{{ stats.new_today }} new today</span>
+            <button class="btn-debug" onclick="openDebug()" title="Debug info">Debug</button>
             <span class="stat last-scan" id="last-scan-stat">
                 {% if stats.scrape_running %}
                 <span class="scrape-spinner">&#9696;</span> Scraping now…
@@ -30,6 +31,17 @@
         <span class="scrape-spinner">&#9696;</span> Scraper is running — page will refresh when done.
     </div>
     {% endif %}
+
+    <!-- Debug modal -->
+    <div id="debug-modal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeDebug()">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h2>Debug info</h2>
+                <button onclick="closeDebug()" class="modal-close">&times;</button>
+            </div>
+            <div id="debug-content" class="modal-body">Loading…</div>
+        </div>
+    </div>
 
     <nav class="filters">
         <a href="?filter=all" class="{{ 'active' if filter == 'all' else '' }}">All ({{ stats.total }})</a>
@@ -100,6 +112,38 @@
         async function toggleHidden(id) {
             const res = await fetch(`/api/listing/${id}/hide`, { method: 'POST' });
             if (res.ok) location.reload();
+        }
+
+        async function openDebug() {
+            document.getElementById('debug-modal').style.display = 'flex';
+            const el = document.getElementById('debug-content');
+            el.textContent = 'Loading…';
+            try {
+                const res = await fetch('/debug');
+                const d = await res.json();
+                el.innerHTML = `
+<table class="debug-table">
+  <tr><td>Last scan</td><td>${d.last_scan ?? 'never'}</td></tr>
+  <tr><td>Scraping now</td><td>${d.scrape_running ? '⟳ yes' : 'no'}</td></tr>
+  <tr><td>Last error</td><td>${d.last_error ? '<span class="debug-error">' + escHtml(d.last_error) + '</span>' : 'none'}</td></tr>
+  <tr><td>DB total</td><td>${d.total_in_db}</td></tr>
+  <tr><td>Active</td><td>${d.active}</td></tr>
+  <tr><td>imobiliare</td><td>${d.by_source.imobiliare}</td></tr>
+  <tr><td>storia</td><td>${d.by_source.storia}</td></tr>
+</table>
+<h3 style="margin:1rem 0 .5rem">Last 10 in DB</h3>
+${d.recent_10.length === 0 ? '<p style="color:#888">none</p>' : d.recent_10.map(l =>
+  `<div class="debug-row"><span class="source-badge ${l.source}">${l.source}</span> ${escHtml(l.title ?? '—')} &bull; €${l.price ?? '?'} &bull; <span style="color:#888">${l.first_seen?.slice(0,16).replace('T',' ')}</span></div>`
+).join('')}`;
+            } catch (e) {
+                el.textContent = 'Failed to load: ' + e;
+            }
+        }
+        function closeDebug() {
+            document.getElementById('debug-modal').style.display = 'none';
+        }
+        function escHtml(s) {
+            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         }
 
         // Poll /debug every 4s while a scrape is running; reload when it finishes
