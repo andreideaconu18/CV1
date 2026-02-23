@@ -14,12 +14,12 @@ BASE_URL = "https://www.imobiliare.ro"
 
 def _build_search_url(page=1):
     c = SEARCH_CRITERIA
-    # e.g. /apartamente-2-camere/bucuresti/?pret-min=550&pret-max=650&moneda=EUR&...
-    slug = f"apartamente-{c['rooms']}-camere"
+    # /inchirieri-apartamente/bucuresti/?nr-camere=2&pret-min=550&...
     city = c["city"]
-    url = f"{BASE_URL}/{slug}/{city}/"
+    url = f"{BASE_URL}/inchirieri-apartamente/{city}/"
     params = (
-        f"?pret-min={c['price_min']}"
+        f"?nr-camere={c['rooms']}"
+        f"&pret-min={c['price_min']}"
         f"&pret-max={c['price_max']}"
         f"&moneda={c['currency']}"
         f"&tip-compartimentare=decomandat"
