@@ -118,18 +118,19 @@ class ImobiliareScraper(BaseScraper):
                 elif "RON" in raw.upper() or "LEI" in raw.upper():
                     currency = "RON"
             if price is None:
-                # Fallback: extract price from full card text
-                pm = re.search(r'(\d[\d\s]{1,7})\s*(?:€|eur\b)', details_text)
+                # Fallback: scan full card text. Use \b so "79 m² 600 €" matches
+                # 600, not 9600 (old greedy pattern grabbed "9" from "79").
+                pm = re.search(r'\b(\d{3,5})\s*(?:€|eur\b)', details_text)
                 if pm:
                     try:
-                        price = float("".join(pm.group(1).split()))
+                        price = float(pm.group(1))
                     except ValueError:
                         pass
                 else:
-                    pm = re.search(r'(\d[\d\s]{1,7})\s*(?:ron|lei)\b', details_text)
+                    pm = re.search(r'\b(\d{4,6})\s*(?:ron|lei)\b', details_text)
                     if pm:
                         try:
-                            price = float("".join(pm.group(1).split()))
+                            price = float(pm.group(1))
                             currency = "RON"
                         except ValueError:
                             pass
