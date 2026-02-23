@@ -25,6 +25,7 @@ init_db()
 _last_scan: datetime.datetime | None = None
 _last_error: str | None = None
 _scrape_lock = threading.Lock()
+_last_run_stats: dict = {}  # keyed by source name
 
 
 # ---------------------------------------------------------------------------
@@ -32,7 +33,7 @@ _scrape_lock = threading.Lock()
 # ---------------------------------------------------------------------------
 
 def run_scrapers():
-    global _last_scan, _last_error
+    global _last_scan, _last_error, _last_run_stats
     if not _scrape_lock.acquire(blocking=False):
         logger.info("Scrape already in progress, skipping.")
         return
@@ -40,21 +41,24 @@ def run_scrapers():
         logger.info("Starting scrape cycle…")
         scrapers = [ImobiliareScraper(), StoriaScraper()]
         db = SessionLocal()
+        run_stats = {}
         try:
-            new_count = 0
-            filtered_count = 0
             for scraper in scrapers:
+                src = scraper.SOURCE_NAME
+                stats = {"raw": 0, "area_filtered": 0, "already_known": 0, "new": 0, "error": None}
+                run_stats[src] = stats
                 try:
                     listings = scraper.scrape()
                 except Exception as e:
-                    _last_error = f"{scraper.SOURCE_NAME}: {e}"
-                    logger.error(f"{scraper.SOURCE_NAME} scraper failed: {e}")
+                    stats["error"] = str(e)
+                    _last_error = f"{src}: {e}"
+                    logger.error(f"{src} scraper failed: {e}")
                     continue
 
+                stats["raw"] = len(listings)
                 for listing in listings:
-                    # Area filter
                     if not listing.matches_area(TARGET_AREA, TARGET_NEIGHBORHOODS):
-                        filtered_count += 1
+                        stats["area_filtered"] += 1
                         continue
                     existing = (
                         db.query(Listing)
@@ -64,13 +68,17 @@ def run_scrapers():
                     if existing:
                         existing.last_seen = datetime.datetime.utcnow()
                         existing.is_active = True
+                        stats["already_known"] += 1
                     else:
                         db.add(listing)
-                        new_count += 1
+                        stats["new"] += 1
 
             db.commit()
             _last_scan = datetime.datetime.utcnow()
-            logger.info(f"Scrape done. {new_count} new listings added. {filtered_count} filtered by area.")
+            _last_run_stats = run_stats
+            total_new = sum(s["new"] for s in run_stats.values())
+            total_filtered = sum(s["area_filtered"] for s in run_stats.values())
+            logger.info(f"Scrape done. {total_new} new listings added. {total_filtered} filtered by area.")
         finally:
             db.close()
     finally:
@@ -239,6 +247,7 @@ def debug():
         "active": active,
         "by_source": by_source,
         "recent_10": recent,
+        "last_run_stats": _last_run_stats,
     })
 
 

@@ -121,16 +121,48 @@
             try {
                 const res = await fetch('/debug');
                 const d = await res.json();
+                const runStats = d.last_run_stats ?? {};
+                const sources = ['imobiliare', 'storia'];
+
+                function diagnosisHtml(src) {
+                    const s = runStats[src];
+                    if (!s) return '<span style="color:#888">no run recorded yet</span>';
+                    if (s.error) return `<span class="debug-error">ERROR: ${escHtml(s.error)}</span>`;
+                    if (s.raw === 0) return '<span class="debug-warn">Fetched 0 listings — site may be blocking requests</span>';
+                    const passed = s.raw - s.area_filtered;
+                    if (s.new === 0) {
+                        return `<span class="debug-ok">OK — ${s.raw} fetched, ${s.area_filtered} outside area, ${passed} checked, all ${s.already_known} already known</span>`;
+                    }
+                    return `<span class="debug-ok">OK — ${s.raw} fetched, ${s.area_filtered} outside area, <strong>${s.new} new</strong>, ${s.already_known} already known</span>`;
+                }
+
                 el.innerHTML = `
 <table class="debug-table">
   <tr><td>Last scan</td><td>${d.last_scan ?? 'never'}</td></tr>
   <tr><td>Scraping now</td><td>${d.scrape_running ? '⟳ yes' : 'no'}</td></tr>
-  <tr><td>Last error</td><td>${d.last_error ? '<span class="debug-error">' + escHtml(d.last_error) + '</span>' : 'none'}</td></tr>
-  <tr><td>DB total</td><td>${d.total_in_db}</td></tr>
-  <tr><td>Active</td><td>${d.active}</td></tr>
-  <tr><td>imobiliare</td><td>${d.by_source.imobiliare}</td></tr>
-  <tr><td>storia</td><td>${d.by_source.storia}</td></tr>
+  <tr><td>DB total / active</td><td>${d.total_in_db} / ${d.active}</td></tr>
+  <tr><td>imobiliare in DB</td><td>${d.by_source.imobiliare}</td></tr>
+  <tr><td>storia in DB</td><td>${d.by_source.storia}</td></tr>
 </table>
+
+<h3 style="margin:1rem 0 .5rem">Last run — per source</h3>
+${sources.map(src => `
+<div class="debug-source-block">
+  <div class="debug-source-name"><span class="source-badge ${src}">${src}</span></div>
+  <div class="debug-source-diag">${diagnosisHtml(src)}</div>
+  ${runStats[src] && !runStats[src].error ? `
+  <div class="debug-source-nums">
+    <span>${runStats[src].raw} fetched</span>
+    <span class="debug-arrow">→</span>
+    <span>${runStats[src].area_filtered} outside area</span>
+    <span class="debug-arrow">→</span>
+    <span>${runStats[src].raw - runStats[src].area_filtered} in area</span>
+    <span class="debug-arrow">→</span>
+    <span class="${runStats[src].new > 0 ? 'debug-new' : ''}">${runStats[src].new} new</span>
+    <span>+ ${runStats[src].already_known} known</span>
+  </div>` : ''}
+</div>`).join('')}
+
 <h3 style="margin:1rem 0 .5rem">Last 10 in DB</h3>
 ${d.recent_10.length === 0 ? '<p style="color:#888">none</p>' : d.recent_10.map(l =>
   `<div class="debug-row"><span class="source-badge ${l.source}">${l.source}</span> ${escHtml(l.title ?? '—')} &bull; €${l.price ?? '?'} &bull; <span style="color:#888">${l.first_seen?.slice(0,16).replace('T',' ')}</span></div>`
