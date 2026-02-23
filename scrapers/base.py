@@ -85,27 +85,54 @@ class BaseScraper:
         if not (current_floor and "/" in current_floor):
             detail_floor = None
 
-            # Pattern 1 — "etajul 11/11" or "etajul 11 din 11" in visible text
-            m = _re.search(r"etaj(?:ul)?\s*[:\s]*(\d+)\s*(?:din|/)\s*(\d+)", page_text)
-            if m:
-                detail_floor = f"{m.group(1)}/{m.group(2)}"
+            # ── Approach A: walk DOM for "Etaj" label → adjacent value element ──────
+            # Handles any spec-table structure regardless of separator in get_text().
+            for label_el in soup.find_all(
+                string=_re.compile(r"^\s*etaj[ul]*:?\s*$", _re.IGNORECASE)
+            ):
+                parent = label_el.parent
+                # Try immediate sibling of the label element, then uncle (parent's sibling)
+                for candidate in (
+                    parent.find_next_sibling(),
+                    parent.parent.find_next_sibling() if parent.parent else None,
+                ):
+                    if not candidate:
+                        continue
+                    val = candidate.get_text(" ", strip=True)
+                    vm = _re.search(r">?\s*(\d+)\s*(?:din|/)\s*(\d+)", val)
+                    if vm:
+                        x, y = int(vm.group(1)), int(vm.group(2))
+                        if ">" in val and x + 1 == y:
+                            detail_floor = f"{y}/{y}"
+                        else:
+                            detail_floor = f"{x}/{y}"
+                        break
+                if detail_floor:
+                    break
 
-            # Pattern 2 — "etaj: > 10/11" (storia.ro high-floor notation)
-            # "> X/Y" where X == Y-1 means the listing is on the top (Y-th) floor
+            # ── Approach B: broad text scan on the full page text ─────────────────
+            # Covers "etaj: 3/8", "etajul 3/8", "etaj 3 din 8", "etaj: > 10/11"
             if not detail_floor:
-                m_gt = _re.search(r"etaj[^\d>]*>\s*(\d+)\s*(?:din|/)\s*(\d+)", page_text)
-                if m_gt:
-                    x, y = int(m_gt.group(1)), int(m_gt.group(2))
-                    floor_num = str(y) if x + 1 == y else (current_floor or str(x))
-                    detail_floor = f"{floor_num}/{y}"
+                m = _re.search(
+                    r"etaj[ul: >]*(\d+)\s*(?:din|/)\s*(\d+)", page_text
+                )
+                if m:
+                    x, y = int(m.group(1)), int(m.group(2))
+                    between = page_text[m.start(): m.start(1)]
+                    if ">" in between and x + 1 == y:
+                        detail_floor = f"{y}/{y}"
+                    else:
+                        detail_floor = f"{x}/{y}"
 
-            # Pattern 3 — JSON script data (Next.js __NEXT_DATA__, application/ld+json, etc.)
-            # Floor is sometimes only inside JSON and not in the rendered text node.
+            # ── Approach C: JSON script data ──────────────────────────────────────
+            # storia.ro / Next.js puts all page data in <script id="__NEXT_DATA__">.
+            # Try both string ("floor": "3/8") and numeric ("floor": 3, "floors": 8).
             if not detail_floor:
                 for script in soup.find_all("script"):
                     s = script.string or ""
                     if not s:
                         continue
+                    # String value: "floorNo": "3/8"
                     sm = _re.search(
                         r'"[^"]*(?:etaj|floor)[^"]*"\s*:\s*"(\d+)\s*(?:/|din)\s*(\d+)"',
                         s, _re.IGNORECASE,
@@ -113,11 +140,23 @@ class BaseScraper:
                     if sm:
                         detail_floor = f"{sm.group(1)}/{sm.group(2)}"
                         break
+                    # Numeric values: "floorNumber": 3  +  "numberOfFloors": 8
+                    fn = _re.search(
+                        r'"(?:floor(?:Number|No|Level)?|etaj(?:ul)?)":\s*(\d+)',
+                        s, _re.IGNORECASE,
+                    )
+                    tf = _re.search(
+                        r'"(?:(?:number|total|nr)Of(?:Floors|Etaje)|(?:floors|etaje)(?:Total|Nr|Count)?)":\s*(\d+)',
+                        s, _re.IGNORECASE,
+                    )
+                    if fn and tf:
+                        detail_floor = f"{fn.group(1)}/{tf.group(1)}"
+                        break
 
             if detail_floor:
                 updated_floor = detail_floor
             elif current_floor and current_floor != "parter":
-                # Fallback: only total floors known ("total etaje: 11")
+                # Last resort: find total-floor count only ("total etaje: 11")
                 m3 = _re.search(
                     r"(?:nr\.?\s*etaje?|num[aă]r\s*etaje?|total\s*etaje?)[:\s]*(\d+)",
                     page_text,
