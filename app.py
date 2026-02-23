@@ -395,6 +395,65 @@ def debug_floor():
     return jsonify(results)
 
 
+@app.route("/debug/detail")
+def debug_detail():
+    """Fetch a listing's detail page and show what each floor-extraction pattern sees.
+
+    Pass ?url=<listing-url> or leave blank to use the first storia listing in DB.
+    """
+    import re as _re
+    from scrapers.base import BaseScraper
+
+    url = request.args.get("url")
+    if not url:
+        db = SessionLocal()
+        try:
+            row = db.query(Listing).filter_by(source="storia").first()
+            url = row.url if row else None
+        finally:
+            db.close()
+    if not url:
+        return jsonify({"error": "No URL provided and no listings in DB"})
+
+    scraper = BaseScraper()
+    soup = scraper.fetch_page(url)
+    if not soup:
+        return jsonify({"url": url, "status": "blocked_or_failed"})
+
+    page_text = soup.get_text(" ", strip=True).lower()
+
+    # All snippets around "etaj" in visible text
+    snippets = []
+    for hit in _re.finditer(r"etaj", page_text):
+        s, e = max(0, hit.start() - 15), min(len(page_text), hit.end() + 100)
+        snippets.append(page_text[s:e])
+
+    m1 = _re.search(r"etaj(?:ul)?\s*[:\s]*(\d+)\s*(?:din|/)\s*(\d+)", page_text)
+    m2 = _re.search(r"etaj[^\d>]*>\s*(\d+)\s*(?:din|/)\s*(\d+)", page_text)
+
+    json_floor = None
+    for script in soup.find_all("script"):
+        s = script.string or ""
+        if not s:
+            continue
+        sm = _re.search(
+            r'"[^"]*(?:etaj|floor)[^"]*"\s*:\s*"(\d+)\s*(?:/|din)\s*(\d+)"',
+            s, _re.IGNORECASE,
+        )
+        if sm:
+            json_floor = f"{sm.group(1)}/{sm.group(2)}"
+            break
+
+    return jsonify({
+        "url": url,
+        "status": "ok",
+        "etaj_snippets_in_text": snippets[:15],
+        "pattern1_standard": f"{m1.group(1)}/{m1.group(2)}" if m1 else None,
+        "pattern2_gt_notation": f"{m2.group(1)}/{m2.group(2)}" if m2 else None,
+        "pattern3_json_script": json_floor,
+    })
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------

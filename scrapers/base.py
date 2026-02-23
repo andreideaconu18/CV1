@@ -83,20 +83,47 @@ class BaseScraper:
         # Floor: prefer the detail page over the card (card may say "10+" when real is "11")
         # Only skip if the card already gave us a clean "X/Y" value.
         if not (current_floor and "/" in current_floor):
-            # Pattern 1: "etajul 11/11" or "etajul 11 din 11" → captures both parts
-            m = _re.search(
-                r"etaj(?:ul)?\s*[:\s]*(\d+)\s*(?:din|/)\s*(\d+)", page_text
-            )
+            detail_floor = None
+
+            # Pattern 1 — "etajul 11/11" or "etajul 11 din 11" in visible text
+            m = _re.search(r"etaj(?:ul)?\s*[:\s]*(\d+)\s*(?:din|/)\s*(\d+)", page_text)
             if m:
-                updated_floor = f"{m.group(1)}/{m.group(2)}"
+                detail_floor = f"{m.group(1)}/{m.group(2)}"
+
+            # Pattern 2 — "etaj: > 10/11" (storia.ro high-floor notation)
+            # "> X/Y" where X == Y-1 means the listing is on the top (Y-th) floor
+            if not detail_floor:
+                m_gt = _re.search(r"etaj[^\d>]*>\s*(\d+)\s*(?:din|/)\s*(\d+)", page_text)
+                if m_gt:
+                    x, y = int(m_gt.group(1)), int(m_gt.group(2))
+                    floor_num = str(y) if x + 1 == y else (current_floor or str(x))
+                    detail_floor = f"{floor_num}/{y}"
+
+            # Pattern 3 — JSON script data (Next.js __NEXT_DATA__, application/ld+json, etc.)
+            # Floor is sometimes only inside JSON and not in the rendered text node.
+            if not detail_floor:
+                for script in soup.find_all("script"):
+                    s = script.string or ""
+                    if not s:
+                        continue
+                    sm = _re.search(
+                        r'"[^"]*(?:etaj|floor)[^"]*"\s*:\s*"(\d+)\s*(?:/|din)\s*(\d+)"',
+                        s, _re.IGNORECASE,
+                    )
+                    if sm:
+                        detail_floor = f"{sm.group(1)}/{sm.group(2)}"
+                        break
+
+            if detail_floor:
+                updated_floor = detail_floor
             elif current_floor and current_floor != "parter":
-                # Pattern 2: only total floors ("total etaje: 11") — keep card number as floor
-                m2 = _re.search(
+                # Fallback: only total floors known ("total etaje: 11")
+                m3 = _re.search(
                     r"(?:nr\.?\s*etaje?|num[aă]r\s*etaje?|total\s*etaje?)[:\s]*(\d+)",
                     page_text,
                 )
-                if m2:
-                    updated_floor = f"{current_floor}/{m2.group(1)}"
+                if m3:
+                    updated_floor = f"{current_floor}/{m3.group(1)}"
 
         # Gallery images: try known gallery containers, fall back to all imgs
         _SKIP = ("logo", "icon", "sprite", "avatar", "flag", "badge",
