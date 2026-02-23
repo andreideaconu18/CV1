@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apartment Scout - Bucharest</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <h1>Apartment Scout</h1>
+            <p class="subtitle">Bucharest &middot; 550-650 EUR &middot; 2 rooms &middot; Decomandat</p>
+        </div>
+        <div class="header-stats">
+            <span class="stat">{{ stats.total }} listings</span>
+            <span class="stat">{{ stats.new_today }} new today</span>
+            <a href="/scrape" class="btn-scan">Scan now</a>
+            <button class="btn-debug" onclick="openDebug()" title="Debug info">Debug</button>
+            <span class="stat last-scan" id="last-scan-stat">
+                {% if stats.scrape_running %}
+                <span class="scrape-spinner">&#9696;</span> Scraping now…
+                {% else %}
+                Last scan: {{ stats.last_scan }}
+                {% endif %}
+            </span>
+        </div>
+    </header>
+
+    {% if stats.scrape_running %}
+    <div class="scraping-banner" id="scraping-banner">
+        <span class="scrape-spinner">&#9696;</span> Scraper is running — page will refresh when done.
+    </div>
+    {% endif %}
+
+    <!-- Debug modal -->
+    <div id="debug-modal" class="modal-backdrop" style="display:none" onclick="if(event.target===this)closeDebug()">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h2>Debug info</h2>
+                <button onclick="closeDebug()" class="modal-close">&times;</button>
+            </div>
+            <div id="debug-content" class="modal-body">Loading…</div>
+        </div>
+    </div>
+
+    <nav class="filters">
+        <a href="?filter=all" class="{{ 'active' if filter == 'all' else '' }}">All ({{ stats.total }})</a>
+        <a href="?filter=new" class="{{ 'active' if filter == 'new' else '' }}">New today ({{ stats.new_today }})</a>
+        <a href="?filter=favorites" class="{{ 'active' if filter == 'favorites' else '' }}">Favorites ({{ stats.favorites }})</a>
+        <a href="?filter=hidden" class="{{ 'active' if filter == 'hidden' else '' }}">Hidden ({{ stats.hidden }})</a>
+        <span class="filter-separator">|</span>
+        <a href="?filter=imobiliare" class="{{ 'active' if filter == 'imobiliare' else '' }}">imobiliare.ro</a>
+        <a href="?filter=storia" class="{{ 'active' if filter == 'storia' else '' }}">storia.ro</a>
+    </nav>
+
+    <main>
+        {% if listings %}
+        <div class="listings-grid">
+            {% for listing in listings %}
+            <div class="listing-card {{ 'favorite' if listing.is_favorite else '' }} {{ 'hidden' if listing.is_hidden else '' }}" data-id="{{ listing.id }}">
+                <div class="listing-image">
+                    {% if listing.image_url %}
+                    <img src="{{ listing.image_url }}" alt="{{ listing.title }}" loading="lazy">
+                    {% else %}
+                    <div class="no-image">No image</div>
+                    {% endif %}
+                    <span class="source-badge {{ listing.source }}">{{ listing.source }}</span>
+                    <span class="age-badge">{{ listing.age_display }}</span>
+                </div>
+                <div class="listing-info">
+                    <div class="listing-price">{{ listing.price_display }}</div>
+                    <h3 class="listing-title">
+                        <a href="{{ listing.url }}" target="_blank" rel="noopener">{{ listing.title or 'No title' }}</a>
+                    </h3>
+                    <div class="listing-details">
+                        {% if listing.rooms %}<span>{{ listing.rooms }} rooms</span>{% endif %}
+                        {% if listing.surface %}<span>{{ listing.surface }} m&sup2;</span>{% endif %}
+                        {% if listing.layout %}<span>{{ listing.layout }}</span>{% endif %}
+                        {% if listing.floor %}<span>Floor {{ listing.floor }}</span>{% endif %}
+                        {% if listing.year_built %}<span>Built {{ listing.year_built }}</span>{% endif %}
+                        {% if listing.has_balcony %}<span class="has-balcony">Balcony</span>{% endif %}
+                    </div>
+                    {% if listing.neighborhood %}
+                    <div class="listing-location">{{ listing.neighborhood }}{% if listing.address %}, {{ listing.address }}{% endif %}</div>
+                    {% endif %}
+                    <div class="listing-actions">
+                        <button class="btn-fav" onclick="toggleFavorite({{ listing.id }})" title="Favorite">
+                            {{ '★' if listing.is_favorite else '☆' }}
+                        </button>
+                        <button class="btn-hide" onclick="toggleHidden({{ listing.id }})" title="Hide">
+                            {{ '👁' if not listing.is_hidden else '👁‍🗨' }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <h2>No listings yet</h2>
+            <p>The scraper is running every {{ interval }} minutes. Check back soon!</p>
+            <a href="/scrape" class="btn-scrape">Run scraper now</a>
+        </div>
+        {% endif %}
+    </main>
+
+    <script>
+        async function toggleFavorite(id) {
+            const res = await fetch(`/api/listing/${id}/favorite`, { method: 'POST' });
+            if (res.ok) location.reload();
+        }
+        async function toggleHidden(id) {
+            const res = await fetch(`/api/listing/${id}/hide`, { method: 'POST' });
+            if (res.ok) location.reload();
+        }
+
+        async function openDebug() {
+            document.getElementById('debug-modal').style.display = 'flex';
+            const el = document.getElementById('debug-content');
+            el.textContent = 'Loading…';
+            try {
+                const res = await fetch('/debug');
+                const d = await res.json();
+                const runStats = d.last_run_stats ?? {};
+                const sources = ['imobiliare', 'storia'];
+
+                function diagnosisHtml(src) {
+                    const s = runStats[src];
+                    if (!s) return '<span style="color:#888">no run recorded yet</span>';
+                    if (s.error) return `<span class="debug-error">ERROR: ${escHtml(s.error)}</span>`;
+                    if (s.pages_ok === 0 && s.pages_blocked > 0)
+                        return `<span class="debug-error">BLOCKED — Cloudflare / bot challenge on every page (${s.pages_blocked} blocked)</span>`;
+                    if (s.pages_ok === 0 && s.pages_failed > 0)
+                        return `<span class="debug-error">NETWORK ERROR — all ${s.pages_failed} fetch attempts failed<br><code style="font-size:0.75rem;color:#ff9999">${escHtml(s.fetch_error ?? 'unknown')}</code></span>`;
+                    if (s.pages_ok === 0)
+                        return `<span class="debug-warn">No pages fetched — scraper stopped before first request</span>`;
+                    if (s.raw === 0)
+                        return `<span class="debug-warn">Page fetched OK (${s.pages_ok} page${s.pages_ok>1?'s':''}) but 0 listing cards found — CSS selectors may be outdated or content is JS-rendered</span>`;
+                    const passed = s.raw - s.area_filtered;
+                    if (s.new === 0)
+                        return `<span class="debug-ok">OK — ${s.raw} listings found, ${s.area_filtered} outside area, all ${s.already_known} already known</span>`;
+                    return `<span class="debug-ok">OK — ${s.raw} listings found, ${s.area_filtered} outside area, <strong>${s.new} new</strong>, ${s.already_known} already known</span>`;
+                }
+
+                el.innerHTML = `
+<table class="debug-table">
+  <tr><td>Last scan</td><td>${d.last_scan ?? 'never'}</td></tr>
+  <tr><td>Scraping now</td><td>${d.scrape_running ? '⟳ yes' : 'no'}</td></tr>
+  <tr><td>DB total / active</td><td>${d.total_in_db} / ${d.active}</td></tr>
+  <tr><td>imobiliare in DB</td><td>${d.by_source.imobiliare}</td></tr>
+  <tr><td>storia in DB</td><td>${d.by_source.storia}</td></tr>
+</table>
+
+<h3 style="margin:1rem 0 .5rem">Last run — per source</h3>
+${sources.map(src => `
+<div class="debug-source-block">
+  <div class="debug-source-name"><span class="source-badge ${src}">${src}</span></div>
+  <div class="debug-source-diag">${diagnosisHtml(src)}</div>
+  ${runStats[src] && !runStats[src].error ? `
+  <div class="debug-source-nums">
+    <span>${runStats[src].pages_ok} page${runStats[src].pages_ok!==1?'s':''} fetched</span>
+    ${runStats[src].pages_blocked > 0 ? `<span class="debug-warn">${runStats[src].pages_blocked} blocked</span>` : ''}
+    ${runStats[src].pages_failed  > 0 ? `<span class="debug-error">${runStats[src].pages_failed} failed</span>`  : ''}
+    <span class="debug-arrow">→</span>
+    <span>${runStats[src].raw} cards</span>
+    <span class="debug-arrow">→</span>
+    <span>${runStats[src].area_filtered} outside area</span>
+    <span class="debug-arrow">→</span>
+    <span class="${runStats[src].new > 0 ? 'debug-new' : ''}">${runStats[src].new} new</span>
+    <span>+ ${runStats[src].already_known} known</span>
+  </div>` : ''}
+</div>`).join('')}
+
+<h3 style="margin:1rem 0 .5rem">Last 10 in DB</h3>
+${d.recent_10.length === 0 ? '<p style="color:#888">none</p>' : d.recent_10.map(l =>
+  `<div class="debug-row"><span class="source-badge ${l.source}">${l.source}</span> ${escHtml(l.title ?? '—')} &bull; €${l.price ?? '?'} &bull; <span style="color:#888">${l.first_seen?.slice(0,16).replace('T',' ')}</span></div>`
+).join('')}`;
+            } catch (e) {
+                el.textContent = 'Failed to load: ' + e;
+            }
+        }
+        function closeDebug() {
+            document.getElementById('debug-modal').style.display = 'none';
+        }
+        function escHtml(s) {
+            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        // Poll /debug every 4s while a scrape is running; reload when it finishes
+        (function () {
+            const stat = document.getElementById('last-scan-stat');
+            let running = stat && stat.textContent.includes('Scraping now');
+            if (!running) return;
+
+            const interval = setInterval(async () => {
+                try {
+                    const res = await fetch('/debug');
+                    const data = await res.json();
+                    if (!data.scrape_running) {
+                        clearInterval(interval);
+                        location.reload();
+                    }
+                } catch (_) {}
+            }, 4000);
+        })();
+    </script>
+</body>
+</html>
