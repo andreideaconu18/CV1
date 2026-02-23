@@ -150,11 +150,14 @@ class StoriaScraper(BaseScraper):
                 except ValueError:
                     pass
 
-            # Floor — "etaj 3", "etaj: 3", "etaj3" all handled
+            # Floor — handles "etaj 3", "etajul 3 din 8", "tip etaj: etajul 3/8"
             floor = None
-            fm = re.search(r"etaj[\s:]*(\w+)", details_text)
+            fm = re.search(r"etaj(?:ul)?\s*[:\s]*(\d+(?:\s*(?:/|din)\s*\d+)?)", details_text)
             if fm:
-                floor = fm.group(1)
+                raw = fm.group(1).strip()
+                floor = re.sub(r"\s*din\s*", "/", raw).replace(" ", "")
+            elif re.search(r"\bparter\b", details_text):
+                floor = "parter"
 
             # Year built
             year_built = None
