@@ -107,11 +107,17 @@ class BaseScraper:
                         else:
                             detail_floor = f"{x}/{y}"
                         break
+                    # "parter/8" or "parter din 8"
+                    vm_p = _re.search(r"parter\s*(?:din|/)\s*(\d+)", val, _re.IGNORECASE)
+                    if vm_p:
+                        detail_floor = f"parter/{vm_p.group(1)}"
+                        break
                 if detail_floor:
                     break
 
             # ── Approach B: broad text scan on the full page text ─────────────────
-            # Covers "etaj: 3/8", "etajul 3/8", "etaj 3 din 8", "etaj: > 10/11"
+            # Covers "etaj: 3/8", "etajul 3/8", "etaj 3 din 8", "etaj: > 10/11",
+            # and "etaj parter/8" / "etaj parter din 8"
             if not detail_floor:
                 m = _re.search(
                     r"etaj[ul: >]*(\d+)\s*(?:din|/)\s*(\d+)", page_text
@@ -123,6 +129,12 @@ class BaseScraper:
                         detail_floor = f"{y}/{y}"
                     else:
                         detail_floor = f"{x}/{y}"
+                else:
+                    mp = _re.search(
+                        r"etaj[ul: >]*parter\s*(?:din|/)\s*(\d+)", page_text
+                    )
+                    if mp:
+                        detail_floor = f"parter/{mp.group(1)}"
 
             # ── Approach C: JSON script data ──────────────────────────────────────
             # storia.ro / Next.js puts all page data in <script id="__NEXT_DATA__">.
@@ -155,7 +167,7 @@ class BaseScraper:
 
             if detail_floor:
                 updated_floor = detail_floor
-            elif current_floor and current_floor != "parter":
+            elif current_floor:
                 # Last resort: find total-floor count only ("total etaje: 11")
                 m3 = _re.search(
                     r"(?:nr\.?\s*etaje?|num[aă]r\s*etaje?|total\s*etaje?)[:\s]*(\d+)",
