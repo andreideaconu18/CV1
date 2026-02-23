@@ -7,7 +7,7 @@ import threading
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import func
 
-from config import PORT, SCRAPE_INTERVAL_MINUTES, SEARCH_CRITERIA, TARGET_AREA, TARGET_NEIGHBORHOODS
+from config import PORT, REQUEST_TIMEOUT, SCRAPE_INTERVAL_MINUTES, SEARCH_CRITERIA, TARGET_AREA, TARGET_NEIGHBORHOODS
 from database import Listing, SessionLocal, init_db
 from scrapers import ImobiliareScraper, StoriaScraper
 
@@ -32,6 +32,30 @@ _last_run_stats: dict = {}  # keyed by source name
 # Scraping
 # ---------------------------------------------------------------------------
 
+def _check_stale_listings(db, since):
+    """HEAD-check active listings not refreshed this cycle; mark 404s inactive."""
+    import requests as _req
+    stale = (
+        db.query(Listing)
+        .filter(Listing.is_active == True, Listing.last_seen < since)
+        .all()
+    )
+    if not stale:
+        return
+    logger.info(f"Checking {len(stale)} stale listing(s) for 404…")
+    session = _req.Session()
+    session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+    for listing in stale:
+        try:
+            resp = session.head(listing.url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+            if resp.status_code == 404:
+                listing.is_active = False
+                logger.info(f"Listing {listing.id} returned 404, marked inactive.")
+        except Exception as e:
+            logger.debug(f"Could not HEAD-check {listing.url}: {e}")
+    db.commit()
+
+
 def run_scrapers():
     global _last_scan, _last_error, _last_run_stats
     if not _scrape_lock.acquire(blocking=False):
@@ -39,6 +63,7 @@ def run_scrapers():
         return
     try:
         logger.info("Starting scrape cycle…")
+        scrape_started_at = datetime.datetime.utcnow()
         scrapers = [ImobiliareScraper(), StoriaScraper()]
         db = SessionLocal()
         run_stats = {}
@@ -79,6 +104,7 @@ def run_scrapers():
                         stats["new"] += 1
 
             db.commit()
+            _check_stale_listings(db, scrape_started_at)
             _last_scan = datetime.datetime.utcnow()
             _last_run_stats = run_stats
             total_new = sum(s["new"] for s in run_stats.values())

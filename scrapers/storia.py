@@ -150,9 +150,9 @@ class StoriaScraper(BaseScraper):
                 except ValueError:
                     pass
 
-            # Floor
+            # Floor — "etaj 3", "etaj: 3", "etaj3" all handled
             floor = None
-            fm = re.search(r"etaj\s*(\w+)", details_text)
+            fm = re.search(r"etaj[\s:]*(\w+)", details_text)
             if fm:
                 floor = fm.group(1)
 
