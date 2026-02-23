@@ -75,4 +75,55 @@ This file tracks every meaningful change made to the project. Updated after each
 
 ---
 
+## 2026-02-23 — Debug tooling + scraper diagnostics
+
+### Feature: `/debug` endpoint (`app.py`)
+- JSON endpoint returning DB counts, per-source stats, last 10 listings, last run stats
+- Used by the frontend debug modal to display live diagnostics
+
+### Feature: `/debug/fetch` endpoint (`app.py`)
+- Fetches one page from each site and returns HTML size, card count, bot-detection status
+- Distinguishes between: blocked by bot-challenge, network error, 0 cards found (selector mismatch), and OK
+
+### Feature: Debug modal (`templates/index.html`)
+- Button in header opens a modal with per-source diagnosis
+- Shows: pages fetched, cards found, area-filtered count, new vs already-known
+- Displays "BLOCKED", "NETWORK ERROR", "NO PAGES", or "0 CARDS" vs "OK" per source
+- Auto-polls `/debug` every 4s while a scrape is running; reloads page when done
+
+### Improvement: Scrape status visibility (`templates/index.html`, `static/style.css`)
+- Last scan time shown as relative ("3 min ago") rather than absolute timestamp
+- Live spinner animation while scrape is in progress
+- Page auto-reloads when scrape completes
+
+### Bug fix: Scheduler startup (`app.py`)
+- Fixed scheduler not starting reliably under gunicorn; `_start_scheduler()` now called at module import level
+- Exposes actual fetch error messages in debug modal instead of generic failure label
+
+### Bug fix: imobiliare.ro URL
+- Fixed incorrect URL path (was missing `/inchirieri-apartamente/` prefix)
+
+---
+
+## 2026-02-23 — Confirmed working search URLs
+
+### Change: imobiliare.ro search URL (`scrapers/imobiliare.py`)
+- **Before:** `/inchirieri-apartamente/bucuresti/?nr-camere=2&pret-min=550&pret-max=650&moneda=EUR&tip-compartimentare=decomandat&an-constructie-min=1980&balcon=da`
+- **After:** `/inchirieri-apartamente/2-camere?price=550-650&comfort=1,luxury`
+- Year filter removed — imobiliare.ro has no year-built search param; year is extracted from listing text when available, stored as `null` if not found
+- Balcony filter removed from URL — agents frequently forget to tick it, causing valid listings to be missed; balcony is now detected by scanning the description text (`"balcon" in details_text`)
+- `comfort=1,luxury` covers both confort 1 (standard) and lux apartments
+
+### Change: storia.ro search URL (`scrapers/storia.py`)
+- **Before:** `/inchiriere/apartament/2-camere/bucuresti/?priceMin=...&builtYearMin=1980&buildingType=APARTMENT&ownership=decomandat&hasGarage=0`
+- **After:** `/ro/rezultate/inchiriere/apartament,2-camere/bucuresti?limit=36&priceMin=550&priceMax=650&buildYearMin=1979&by=DEFAULT&direction=DESC`
+- Corrected base path (`/ro/rezultate/` prefix, `apartament,2-camere` format)
+- Added `limit=36` and `by=DEFAULT&direction=DESC` sort order
+- Removed non-functional params (`currency`, `roomsNumber`, `buildingType`, `ownership`, `hasGarage`)
+
+### Change: `config.py`
+- `year_min` updated from `1980` to `1979` to match storia's `buildYearMin` param
+
+---
+
 _Last updated: 2026-02-23_
