@@ -6,7 +6,10 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 from config import DATABASE_URL
 
-engine = create_engine(DATABASE_URL, echo=False)
+# Railway (and Heroku) emit postgres:// but SQLAlchemy 2.x needs postgresql://
+_db_url = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+engine = create_engine(_db_url, echo=False)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 

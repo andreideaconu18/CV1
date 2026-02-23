@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+# Ensure tables exist when gunicorn imports this module
+init_db()
+
 _last_scan: datetime.datetime | None = None
 _scrape_lock = threading.Lock()
 
