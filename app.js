@@ -34,6 +34,44 @@
   const peerIdOf = code => 'lp-' + code.toLowerCase();
   const codeOf = peerId => peerId.replace(/^lp-/, '').toUpperCase();
 
+  // Explicit ICE config: STUN + a free TURN fallback for restrictive networks.
+  const PEER_OPTS = {
+    debug: 1,
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:global.stun.twilio.com:3478' },
+        {
+          urls: 'turn:openrelay.metered.ca:80',
+          username: 'openrelayproject',
+          credential: 'openrelayproject',
+        },
+        {
+          urls: 'turn:openrelay.metered.ca:443',
+          username: 'openrelayproject',
+          credential: 'openrelayproject',
+        },
+        {
+          urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+          username: 'openrelayproject',
+          credential: 'openrelayproject',
+        },
+      ],
+    },
+  };
+
+  // Auto-reconnect to broker if connection is lost (e.g. mobile tab idle).
+  function attachKeepalive(peer, label) {
+    peer.on('disconnected', () => {
+      console.warn('[' + label + '] disconnected from broker, reconnecting…');
+      try { peer.reconnect(); } catch (e) { console.error(e); }
+    });
+    peer.on('close', () => {
+      console.warn('[' + label + '] peer closed');
+    });
+  }
+
   // --- Lobby wiring ---
   $('btn-create').onclick = onCreate;
   $('btn-join').onclick = onJoin;
@@ -84,23 +122,29 @@
       return;
     }
     const code = genCode();
-    const peer = new Peer(peerIdOf(code), { debug: 1 });
+    const peer = new Peer(peerIdOf(code), PEER_OPTS);
     let opened = false;
     peer.on('open', id => {
       opened = true;
       myPeer = peer;
       myId = id;
+      attachKeepalive(peer, 'host');
       onHostReady(id);
     });
     peer.on('error', err => {
       console.error('peer error', err);
-      if (!opened && (err.type === 'unavailable-id' || err.type === 'network')) {
+      if (!opened && (err.type === 'unavailable-id')) {
         peer.destroy();
         tryHost(attempt + 1);
       } else if (!opened) {
-        showError('Network error: ' + err.type);
+        showError('Network error: ' + (err.type || 'unknown') + '. Try again.');
         $('btn-create').disabled = false;
         $('btn-create').textContent = 'Create room';
+      } else {
+        // already opened — runtime error
+        if (state && state.phase !== 'lobby') {
+          $('status-msg').textContent = 'Network blip: reconnecting…';
+        }
       }
     });
     peer.on('connection', conn => onClientConnect(conn));
@@ -137,19 +181,20 @@
     $('btn-join').disabled = true;
     $('btn-join').textContent = 'Connecting...';
 
-    const peer = new Peer({ debug: 1 });
+    const peer = new Peer(PEER_OPTS);
     let timer = setTimeout(() => {
       if (!myPeer || !hostConn || !hostConn.open) {
-        showError('Could not connect. Check the room code.');
+        showError('Could not connect within 12s. The host may have closed the tab — ask them to reload and share a fresh link.');
         $('btn-join').disabled = false;
         $('btn-join').textContent = 'Join';
         try { peer.destroy(); } catch (e) {}
       }
-    }, 8000);
+    }, 12000);
 
     peer.on('open', id => {
       myPeer = peer;
       myId = id;
+      attachKeepalive(peer, 'client');
       const conn = peer.connect(peerIdOf(code), { reliable: true });
       hostConn = conn;
       conn.on('open', () => {
@@ -159,6 +204,7 @@
         conn.send({ type: 'hello', name: myName });
       });
       conn.on('data', onHostMessage);
+      conn.on('error', err => console.error('conn error', err));
       conn.on('close', () => {
         alert('Disconnected from host.');
         location.href = location.pathname;
@@ -168,9 +214,11 @@
       console.error('peer error', err);
       clearTimeout(timer);
       if (err.type === 'peer-unavailable') {
-        showError('Room not found. Check the code.');
+        showError('Room not found. The host may have closed their tab. Ask them to create a fresh room.');
+      } else if (err.type === 'network' || err.type === 'server-error') {
+        showError('PeerJS broker is unreachable right now. Try again in a few seconds.');
       } else {
-        showError('Network error: ' + err.type);
+        showError('Network error: ' + (err.type || 'unknown'));
       }
       $('btn-join').disabled = false;
       $('btn-join').textContent = 'Join';
