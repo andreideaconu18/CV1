@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Liar's Poker</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- Lobby (entry) screen -->
+  <section id="lobby" class="screen active">
+    <h1>Liar's Poker</h1>
+    <p class="tag">Romanian Trombón, with poker hands.</p>
+    <div class="card-form">
+      <label for="name-input">Your name</label>
+      <input id="name-input" maxlength="20" placeholder="e.g. Andrei" autocomplete="off" />
+      <div class="actions">
+        <button id="btn-create" class="primary">Create room</button>
+      </div>
+      <div class="separator"><span>or join an existing room</span></div>
+      <div class="actions">
+        <input id="join-code" maxlength="12" placeholder="ROOM CODE" autocomplete="off" />
+        <button id="btn-join">Join</button>
+      </div>
+      <p id="lobby-error" class="error"></p>
+    </div>
+    <details class="rules">
+      <summary>How to play</summary>
+      <p>Each player starts with 1 card. Play goes clockwise. On your turn, announce a poker hand stricter than the last one — or call <b>Trombón!</b> if you don't believe it.</p>
+      <p>The hand is checked across <b>all</b> players' cards combined. If the hand exists, the caller loses. If it doesn't, the announcer loses.</p>
+      <p>The loser gets +1 card the next round. At <b>5 cards</b>, getting burnt eliminates you. Last player standing wins.</p>
+    </details>
+  </section>
+
+  <!-- Waiting room -->
+  <section id="waiting" class="screen">
+    <h2>Room <span id="room-display"></span></h2>
+    <p class="muted">Share this link with friends:</p>
+    <div class="share">
+      <input id="share-url" readonly />
+      <button id="btn-copy">Copy</button>
+    </div>
+    <h3>Players</h3>
+    <ul id="players-list"></ul>
+    <div id="host-controls">
+      <button id="btn-start" class="primary" disabled>Start game</button>
+      <p class="muted small">At least 2 players to start.</p>
+    </div>
+    <p id="waiting-status" class="muted"></p>
+  </section>
+
+  <!-- Game -->
+  <section id="game" class="screen">
+    <div id="players-bar"></div>
+    <div id="last-hand"></div>
+    <h3 class="cards-label">Your cards</h3>
+    <div id="my-cards"></div>
+    <div id="reveal" class="hidden"></div>
+    <div id="action-area">
+      <div id="picker" class="hidden">
+        <select id="cat-select"></select>
+        <span id="rank-area"></span>
+        <button id="btn-announce" class="primary">Announce</button>
+        <button id="btn-trombon" class="danger">Trombón!</button>
+      </div>
+      <p id="status-msg" class="muted"></p>
+    </div>
+    <div id="next-round" class="hidden">
+      <button id="btn-next-round" class="primary">Next round</button>
+    </div>
+    <div id="log"></div>
+  </section>
+
+  <!-- Game over -->
+  <section id="gameover" class="screen">
+    <h1 id="winner-msg"></h1>
+    <button id="btn-replay" class="primary">Play again</button>
+  </section>
+
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="game.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
