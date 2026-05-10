@@ -17,6 +17,7 @@
   let myId = '';
   let myName = '';
   let isHost = false;
+  let mode = 'multi'; // 'multi' | 'solo'
   let hostConn = null;          // (client) connection to host
   const clients = {};            // (host) peerId -> DataConnection
   let state = null;              // (host) authoritative state
@@ -36,6 +37,7 @@
   // --- Lobby wiring ---
   $('btn-create').onclick = onCreate;
   $('btn-join').onclick = onJoin;
+  $('btn-solo').onclick = onPlaySolo;
   $('btn-copy').onclick = () => {
     const u = $('share-url');
     u.select();
@@ -222,6 +224,130 @@
     renderWaiting();
   }
 
+  // --- Solo mode (vs bots) ---
+  const BOT_NAMES = ['Trombónel', 'Bluffius', 'Cardinel', 'Mister Liar'];
+
+  function onPlaySolo() {
+    const name = $('name-input').value.trim();
+    if (!name) { showError('Enter your name first'); return; }
+    showError('');
+    const botCount = Math.max(1, Math.min(4, parseInt($('bot-count').value, 10) || 2));
+    myName = name;
+    isHost = true;
+    mode = 'solo';
+    myId = 'me';
+
+    state = {
+      phase: 'lobby',
+      players: [{ id: myId, name: myName, count: 1, eliminated: false, cards: [] }],
+      lastHand: null,
+      history: [],
+      activeId: null,
+      startingId: myId,
+      result: null,
+      winnerId: null,
+      log: [],
+    };
+    for (let i = 0; i < botCount; i++) {
+      state.players.push({
+        id: 'bot-' + i,
+        name: BOT_NAMES[i] || `Bot ${i + 1}`,
+        count: 1,
+        eliminated: false,
+        cards: [],
+      });
+    }
+    state.startingId = myId;
+    startRound();
+  }
+
+  function maybeBotTurn() {
+    if (mode !== 'solo' || !state || state.phase !== 'announce') return;
+    if (typeof state.activeId !== 'string' || !state.activeId.startsWith('bot-')) return;
+    const bot = findPlayer(state.activeId);
+    if (!bot || bot.eliminated) return;
+    setTimeout(() => {
+      if (state.activeId !== bot.id || state.phase !== 'announce') return;
+      const decision = decideBotMove(bot);
+      if (decision.type === 'trombon') handleTrombon(bot.id);
+      else handleAnnounce(bot.id, decision.hand);
+    }, 900 + Math.random() * 1100);
+  }
+
+  function decideBotMove(bot) {
+    const otherCount = state.players
+      .filter(p => p.id !== bot.id && !p.eliminated)
+      .reduce((s, p) => s + p.count, 0);
+
+    if (state.lastHand) {
+      const prob = estimateHandProb(state.lastHand, bot.cards, otherCount);
+      const callThresh = 0.30 + Math.random() * 0.15;
+      if (prob < callThresh) return { type: 'trombon' };
+    }
+
+    const candidates = enumerateHandsStrongerThan(state.lastHand);
+    if (candidates.length === 0) {
+      return state.lastHand
+        ? { type: 'trombon' }
+        : { type: 'announce', hand: { category: G.CAT.HIGH_CARD, ranks: [2] } };
+    }
+
+    const safeThresh = 0.55 + Math.random() * 0.20;
+    let pick = null;
+    let bluffPick = candidates[0];
+    for (const h of candidates) {
+      const p = estimateHandProb(h, bot.cards, otherCount);
+      if (p >= safeThresh) { pick = h; break; }
+    }
+    return { type: 'announce', hand: pick || bluffPick };
+  }
+
+  let _allHandsCache = null;
+  function allEnumeratedHands() {
+    if (_allHandsCache) return _allHandsCache;
+    const all = [];
+    for (let r = 2; r <= 14; r++) all.push({ category: G.CAT.HIGH_CARD, ranks: [r] });
+    for (let r = 2; r <= 14; r++) all.push({ category: G.CAT.PAIR, ranks: [r] });
+    for (let h = 3; h <= 14; h++) for (let l = 2; l < h; l++)
+      all.push({ category: G.CAT.TWO_PAIR, ranks: [h, l] });
+    for (let r = 2; r <= 14; r++) all.push({ category: G.CAT.THREE, ranks: [r] });
+    for (let r = 5; r <= 14; r++) all.push({ category: G.CAT.STRAIGHT, ranks: [r] });
+    for (let r = 2; r <= 14; r++) all.push({ category: G.CAT.FLUSH, ranks: [r] });
+    for (let t = 2; t <= 14; t++) for (let p = 2; p <= 14; p++) if (t !== p)
+      all.push({ category: G.CAT.FULL_HOUSE, ranks: [t, p] });
+    for (let r = 2; r <= 14; r++) all.push({ category: G.CAT.FOUR, ranks: [r] });
+    for (let r = 5; r <= 14; r++) all.push({ category: G.CAT.STRAIGHT_FLUSH, ranks: [r] });
+    all.sort(G.compareHands);
+    _allHandsCache = all;
+    return all;
+  }
+
+  function enumerateHandsStrongerThan(lastHand) {
+    const all = allEnumeratedHands();
+    if (!lastHand) return all.slice();
+    return all.filter(h => G.compareHands(h, lastHand) > 0);
+  }
+
+  // Monte Carlo: probability that `hand` exists in a pool of (myCards ∪ otherCount random cards)
+  function estimateHandProb(hand, myCards, otherCount) {
+    if (otherCount <= 0) return G.handExists(hand, myCards) ? 1 : 0;
+    const myKeys = new Set(myCards.map(c => c.rank + ':' + c.suit));
+    const remaining = G.newDeck().filter(c => !myKeys.has(c.rank + ':' + c.suit));
+    const N = 120;
+    let hits = 0;
+    for (let i = 0; i < N; i++) {
+      const arr = remaining.slice();
+      // partial Fisher-Yates: pick `otherCount` random distinct cards
+      for (let k = 0; k < otherCount; k++) {
+        const j = k + Math.floor(Math.random() * (arr.length - k));
+        [arr[k], arr[j]] = [arr[j], arr[k]];
+      }
+      const pool = myCards.concat(arr.slice(0, otherCount));
+      if (G.handExists(hand, pool)) hits++;
+    }
+    return hits / N;
+  }
+
   // --- Host: lobby ---
   function renderWaiting() {
     if (!isHost) return;
@@ -368,11 +494,14 @@
   // --- Host: broadcast ---
   function broadcastState() {
     if (!isHost) return;
-    for (const pid in clients) {
-      const c = clients[pid];
-      if (c && c.open) c.send({ type: 'state', view: makeView(pid) });
+    if (mode === 'multi') {
+      for (const pid in clients) {
+        const c = clients[pid];
+        if (c && c.open) c.send({ type: 'state', view: makeView(pid) });
+      }
     }
     onHostMessage({ type: 'state', view: makeView(myId) });
+    if (mode === 'solo') maybeBotTurn();
   }
 
   function makeView(forId) {
